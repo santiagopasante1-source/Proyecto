@@ -1,12 +1,3 @@
-"""
-app/core/database.py
-────────────────────
-Módulo de conexión a base de datos.
-- SQLite   (desarrollo): sin pool
-- PostgreSQL (producción): pool de conexiones optimizado para la nube.
-
-SQLAlchemy
-"""
 from typing import Generator
 
 from sqlalchemy import create_engine, event, text
@@ -14,20 +5,24 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 from app.core.config import settings
 
+# ── Validación dinámica del motor de base de datos 
+# Detecta si es SQLite analizando la URL (evita el AttributeError en settings)
+IS_SQLITE = str(settings.DATABASE_URL).startswith("sqlite")
+
 # ── Construcción del engine según entorno
 
 def _build_engine():
-    if settings.is_sqlite:
+    if IS_SQLITE:
         # SQLite: desarrollo local
         return create_engine(
-            settings.DATABASE_URL,
+            str(settings.DATABASE_URL),
             connect_args={"check_same_thread": False},
             echo=settings.DEBUG,
         )
     else:
         # PostgreSQL: pool de conexiones para producción en la nube
         return create_engine(
-            settings.DATABASE_URL,
+            str(settings.DATABASE_URL),
             echo=settings.DEBUG,
             # Pool sizing — ajusta según el plan de tu proveedor cloud:
             pool_size=10,           # Conexiones permanentes en el pool
@@ -40,9 +35,10 @@ def _build_engine():
 engine = _build_engine()
 
 # ── Habilitar WAL en SQLite (mejora la concurrencia de lecturas) 
-if settings.is_sqlite:
+if IS_SQLITE:
     @event.listens_for(engine, "connect")
     def _set_sqlite_wal(dbapi_connection, connection_record):
+        # Nota: dbapi_connection usa comandos directos en crudo, no requiere text()
         dbapi_connection.execute("PRAGMA journal_mode=WAL")
         dbapi_connection.execute("PRAGMA foreign_keys=ON")
 

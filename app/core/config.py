@@ -39,13 +39,18 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=True,
+        case_sensitive=False,  # Cambiado a False para evitar fallos si el .env tiene minúsculas
         extra="ignore",
     )
 
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
+
+    @property
+    def is_sqlite(self) -> bool:
+        """Propiedad dinámica que evalúa si el motor actual es SQLite."""
+        return str(self.DATABASE_URL).startswith("sqlite")
 
 
 @lru_cache()

@@ -1,14 +1,14 @@
 """
 dashboard.py
 ────────────
-Dashboard de monitoreo IoT en tiempo real.
+Dashboard de monitoreo IoT en tiempo real con detección híbrida de anomalías.
 Ejecutar con:   streamlit run dashboard.py
 
 Páginas:
-   Tiempo Real    — gráficos de voltaje/corriente en vivo desde la API
-   Histórico      — comportamiento por día/semana/mes desde la BD
-   Incidencias    — registro de eventos anómalos con nivel de criticidad
-   Sistema        — estado de salud del backend y del motor de IA
+   Tiempo Real    — Gráfico unificado de oscilación (V/I) en vivo y métricas híbridas
+   Histórico      — Comportamiento por día/semana/mes desde la BD PostgreSQL (Neon)
+   Incidencias    — Registro de eventos anómalos con nivel de criticidad
+   Sistema        — Estado de salud del backend y del motor de IA (Bi-LSTM)
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from typing import Any
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -29,7 +30,6 @@ from sqlalchemy import create_engine, text
 load_dotenv()
 
 # ── Configuración de página 
-
 st.set_page_config(
     page_title="IoT Anomaly Monitor",
     page_icon="⚡",
@@ -38,7 +38,6 @@ st.set_page_config(
 )
 
 # ── Constantes configurables 
-
 API_BASE = "http://localhost:8000"
 
 # Leer la base de datos desde las variables de entorno orientadas a PostgreSQL
@@ -54,14 +53,14 @@ SEVERIDAD_COLORS = {
     "baja":     "#3B82F6",   # azul
     "media":    "#F59E0B",   # ámbar
     "alta":     "#EF4444",   # rojo
-    "critica": "#7C3AED",   # púrpura
+    "critica":  "#7C3AED",   # púrpura
 }
 
 # ── Helpers de acceso a datos ─────────────────────────────────────────────────
 
 @st.cache_resource
 def get_db_engine():
-    """Crea el engine de SQLAlchemy para PostgreSQL Neon (cacheado por Streamlit)."""
+    """Crea el engine de SQLAlchemy para PostgreSQL (cacheado por Streamlit)."""
     return create_engine(
         DB_URL, 
         pool_pre_ping=True, 
@@ -88,7 +87,7 @@ def api_post(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
 
 
 def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    """Ejecuta una consulta SQL y devuelve un DataFrame. Devuelve vacío en error."""
+    """Ejecuta una consulta SQL parametrizada y devuelve un DataFrame. Devuelve vacío en error."""
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
@@ -102,32 +101,27 @@ def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
 
 st.markdown("""
 <style>
-    /* Ocultar el menú hamburguesa de Streamlit */
-    #MainMenu {visibility: hidden;}
+    /* Ocultar elementos heredados de Streamlit */
     footer {visibility: hidden;}
 
-    /* Tarjetas de métricas personalizadas */
+    /* Tarjetas de métricas personalizadas con soporte para transiciones */
     .metric-card {
         background: linear-gradient(135deg, #1e293b, #0f172a);
-        border: 1px solid #334155;
         border-radius: 12px;
         padding: 16px 20px;
         margin: 4px 0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
-    .metric-title { color: #94a3b8; font-size: 13px; margin-bottom: 4px; }
+    .metric-title { color: #94a3b8; font-size: 13px; margin-bottom: 4px; font-weight: 500; }
     .metric-value { color: #f1f5f9; font-size: 28px; font-weight: 700; }
-    .metric-delta { font-size: 12px; margin-top: 2px; }
-    .delta-ok   { color: #22c55e; }
-    .delta-warn { color: #f59e0b; }
-    .delta-crit { color: #ef4444; }
-
+    
     /* Badges de severidad */
-    .badge-baja    { background:#1d4ed8;color:#bfdbfe;padding:2px 10px;border-radius:99px;font-size:12px; }
-    .badge-media   { background:#92400e;color:#fde68a;padding:2px 10px;border-radius:99px;font-size:12px; }
-    .badge-alta    { background:#991b1b;color:#fecaca;padding:2px 10px;border-radius:99px;font-size:12px; }
-    .badge-critica { background:#5b21b6;color:#e9d5ff;padding:2px 10px;border-radius:99px;font-size:12px; }
+    .badge-baja    { background:#1d4ed8;color:#bfdbfe;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600; }
+    .badge-media   { background:#92400e;color:#fde68a;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600; }
+    .badge-alta    { background:#991b1b;color:#fecaca;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600; }
+    .badge-critica { background:#5b21b6;color:#e9d5ff;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600; }
 
-    /* Separador de sección */
+    /* Separador de sección elegante */
     .section-header {
         font-size: 16px; font-weight: 600; color: #e2e8f0;
         border-left: 3px solid #6366f1; padding-left: 10px; margin: 20px 0 12px;
@@ -181,22 +175,22 @@ if pagina == "Tiempo Real":
     st.title("Monitoreo en Tiempo Real")
     st.caption("Los gráficos se actualizan automáticamente consultando la API y la base de datos.")
     st.write(f"⏱️ Reloj del sistema: {datetime.now().strftime('%H:%M:%S')}")
-    # Estado en vivo del último registro
+    
     col1, col2, col3, col4 = st.columns(4)
 
-    df_ultimo = query_df(f"""
+    sql_ultimo = """
         SELECT voltaje, corriente, potencia, frecuencia, timestamp, anomalia_detectada
         FROM telemetrias
-        WHERE dispositivo_id = {dispositivo_id}
+        WHERE dispositivo_id = :dispositivo_id
         ORDER BY timestamp DESC LIMIT 1
-    """)
+    """
+    df_ultimo = query_df(sql_ultimo, params={"dispositivo_id": dispositivo_id})
 
     if not df_ultimo.empty:
         row = df_ultimo.iloc[0]
         v, i, p, f = row["voltaje"], row["corriente"], row["potencia"], row.get("frecuencia", 0)
         
         # ── 1. RESPALDO POR REGLAS DE INGENIERÍA ──
-        # Parámetros nominales estándar: Voltaje (100V - 140V) | Frecuencia (59Hz - 61Hz)
         voltaje_fuera = (v < 100.0 or v > 140.0)
         frecuencia_fuera = (f < 59.0 or f > 61.0) if f > 0 else False
         corriente_fuera = (i > 15.0) 
@@ -204,7 +198,6 @@ if pagina == "Tiempo Real":
         es_anomalia_ia = bool(row["anomalia_detectada"])
         es_anomalia_regla = (voltaje_fuera or frecuencia_fuera or corriente_fuera)
         
-        # El sistema alerta si la IA lo detecta O si se rompe una regla física
         es_anomalia = es_anomalia_ia or es_anomalia_regla
 
         # ── 2. COLORES DINÁMICOS PARA LOS BORDES DE LAS TARJETAS ──
@@ -213,111 +206,115 @@ if pagina == "Tiempo Real":
         p_border = "#334155"  
         f_border = "#EF4444" if frecuencia_fuera else "#334155"
 
-        # Función helper actualizada para recibir el color del borde dinámico
         def metric_html(title, value, unit, border_color="#334155"):
             return f"""
-            <div class="metric-card" style="border: 2px solid {border_color}; transition: border 0.5s ease;">
+            <div class="metric-card" style="border: 2px solid {border_color}; transition: border 0.4s ease-in-out;">
               <div class="metric-title">{title}</div>
               <div class="metric-value">{value:.2f} <span style="font-size:14px;color:#64748b">{unit}</span></div>
             </div>"""
 
-        # Dibujar las tarjetas con sus respectivos colores de alerta
         col1.markdown(metric_html("⚡ Voltaje", v, "V", v_border), unsafe_allow_html=True)
         col2.markdown(metric_html("🔌 Corriente", i, "A", i_border), unsafe_allow_html=True)
         col3.markdown(metric_html("🔥 Potencia", p or 0, "W", p_border), unsafe_allow_html=True)
         col4.markdown(metric_html("📈 Frecuencia", f or 0, "Hz", f_border), unsafe_allow_html=True)
 
-        st.write("") # Espaciador
+        st.write("") 
 
         # ── 3. ALERTAS DINÁMICAS (Lógica de Banners) ──
         if es_anomalia_ia:
-            st.error("🚨 **ANOMALÍA CRÍTICA DETECTADA POR IA (Bi-LSTM)** — El modelo predictivo ha identificado un patrón de riesgo.")
+            st.error("🚨 **ANOMALÍA CRÍTICA DETECTADA POR IA (Bi-LSTM)** — El modelo predictivo profundo ha identificado una firma temporal de riesgo en el flujo eléctrico.")
         elif es_anomalia_regla:
-            st.warning("⚠️ **ALERTA DE SEGURIDAD (Umbral Físico)** — Valores fuera de rangos nominales. El motor analítico de respaldo ha asegurado la lectura.")
+            st.warning("⚠️ **ALERTA DE SEGURIDAD (Umbral Físico)** — Valores fuera de rangos nominales de ingeniería. El motor analítico de respaldo ha asegurado la lectura.")
         else:
-            st.success("✅ **Operación Eléctrica Normal** — Parámetros estables y validados por el sistema híbrido.")
+            st.success("✅ **Operación Eléctrica Normal** — Parámetros estables y completamente validados por el sistema híbrido de monitoreo.")
             
     else:
-        st.info("No hay datos de telemetría para este dispositivo aún.")
+        st.info("No hay datos de telemetría disponibles para este dispositivo en este momento.")
 
     st.divider()
 
-    # ── 4. GRÁFICOS DE SERIE TEMPORAL (Últimos N registros) ──
-    col_left, col_right = st.columns(2)
+    # ── 4. GRÁFICO UNIFICADO DE OSCILACIÓN (Doble Eje Y con Marcadores de Anomalía de la IA) ──
+    st.markdown('<div class="section-header">Gráfico de Oscilación Eléctrica Combinada (Voltaje vs Corriente)</div>', unsafe_allow_html=True)
+    
+    sql_rt = f"""
+        SELECT timestamp, voltaje, corriente, anomalia_detectada
+        FROM telemetrias
+        WHERE dispositivo_id = :dispositivo_id
+        ORDER BY timestamp DESC LIMIT {MAX_REALTIME_POINTS}
+    """
+    df_rt = query_df(sql_rt, params={"dispositivo_id": dispositivo_id})
+    
+    if not df_rt.empty:
+        df_rt = df_rt.sort_values("timestamp")
+        
+        # Crear figura con doble eje Y
+        fig_combined = make_subplots(specs=[[{"secondary_y": True}]])
+        
+        # Trazo de Oscilación de Voltaje (Eje izquierdo)
+        fig_combined.add_trace(go.Scatter(
+            x=df_rt["timestamp"], y=df_rt["voltaje"],
+            mode="lines",
+            line=dict(color="#6366f1", width=2.5),
+            name="Voltaje (V)"
+        ), secondary_y=False)
+        
+        # Trazo de Oscilación de Corriente (Eje derecho)
+        fig_combined.add_trace(go.Scatter(
+            x=df_rt["timestamp"], y=df_rt["corriente"],
+            mode="lines",
+            line=dict(color="#f59e0b", width=2),
+            name="Corriente (A)"
+        ), secondary_y=True)
+        
+        # Resaltar puntos de anomalías detectados por la IA sobre la gráfica
+        df_anom = df_rt[df_rt["anomalia_detectada"] == True]
+        if not df_anom.empty:
+            fig_combined.add_trace(go.Scatter(
+                x=df_anom["timestamp"], y=df_anom["voltaje"],
+                mode="markers",
+                marker=dict(color="#ef4444", size=9, symbol="circle", line=dict(color="#ffffff", width=1)),
+                name="Firma Anómala (IA)"
+            ), secondary_y=False)
 
-    with col_left:
-        st.markdown('<div class="section-header">Voltaje en el tiempo</div>', unsafe_allow_html=True)
-        df_v = query_df(f"""
-            SELECT timestamp, voltaje, anomalia_detectada
-            FROM telemetrias
-            WHERE dispositivo_id = {dispositivo_id}
-            ORDER BY timestamp DESC LIMIT {MAX_REALTIME_POINTS}
-        """)
-        if not df_v.empty:
-            df_v = df_v.sort_values("timestamp")
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df_v["timestamp"], y=df_v["voltaje"],
-                mode="lines+markers",
-                line=dict(color="#6366f1", width=2),
-                marker=dict(
-                    color=df_v["anomalia_detectada"].map({True: "#ef4444", False: "#6366f1"}),
-                    size=6,
-                ),
-                name="Voltaje (V)",
-            ))
-            fig.add_hline(y=120, line_dash="dash", line_color="#22c55e", annotation_text="Nominal 120V")
-            fig.add_hrect(y0=108, y1=132, fillcolor="#22c55e", opacity=0.05, line_width=0)
-            fig.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#94a3b8", margin=dict(l=0, r=0, t=10, b=0),
-                xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1e293b"),
-                showlegend=False, height=280,
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-    with col_right:
-        st.markdown('<div class="section-header">Corriente en el tiempo</div>', unsafe_allow_html=True)
-        df_i = query_df(f"""
-            SELECT timestamp, corriente, anomalia_detectada
-            FROM telemetrias
-            WHERE dispositivo_id = {dispositivo_id}
-            ORDER BY timestamp DESC LIMIT {MAX_REALTIME_POINTS}
-        """)
-        if not df_i.empty:
-            df_i = df_i.sort_values("timestamp")
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(
-                x=df_i["timestamp"], y=df_i["corriente"],
-                mode="lines+markers",
-                line=dict(color="#f59e0b", width=2),
-                marker=dict(
-                    color=df_i["anomalia_detectada"].map({True: "#ef4444", False: "#f59e0b"}),
-                    size=6,
-                ),
-                name="Corriente (A)",
-            ))
-            fig2.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#94a3b8", margin=dict(l=0, r=0, t=10, b=0),
-                xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1e293b"),
-                showlegend=False, height=280,
-            )
-            st.plotly_chart(fig2, use_container_width=True)
+        # Línea guía nominal para el Voltaje
+        fig_combined.add_hline(y=120, line_dash="dash", line_color="#22c55e", annotation_text="Nominal 120V")
+        
+        # Parámetros reestructurados titlefont -> title=dict(font=...)
+        fig_combined.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#94a3b8", margin=dict(l=0, r=0, t=10, b=0),
+            xaxis=dict(showgrid=False),
+            yaxis=dict(
+                title=dict(text="Voltaje (V)", font=dict(color="#6366f1")), 
+                gridcolor="#1e293b", 
+                tickfont=dict(color="#6366f1")
+            ),
+            yaxis2=dict(
+                title=dict(text="Corriente (A)", font=dict(color="#f59e0b")), 
+                showgrid=False, 
+                tickfont=dict(color="#f59e0b")
+            ),
+            height=340,
+            legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_combined, width='stretch')
+    else:
+        st.info("Esperando flujo de series de datos temporales...")
 
     # ── 5. DISTRIBUCIÓN DE ANOMALÍAS (GAUGE) ──
     st.markdown('<div class="section-header">Tasa de anomalías (últimas 100 muestras)</div>', unsafe_allow_html=True)
     
-    df_rate = query_df(f"""
+    sql_rate = """
         SELECT
             COUNT(*) as total,
             SUM(CASE WHEN anomalia_detectada THEN 1 ELSE 0 END) as anomalias
         FROM (
             SELECT anomalia_detectada FROM telemetrias
-            WHERE dispositivo_id = {dispositivo_id}
+            WHERE dispositivo_id = :dispositivo_id
             ORDER BY timestamp DESC LIMIT 100
         ) sub_rate
-    """)
+    """
+    df_rate = query_df(sql_rate, params={"dispositivo_id": dispositivo_id})
     if not df_rate.empty and df_rate.iloc[0]["total"] > 0:
         row = df_rate.iloc[0]
         tasa = (row["anomalias"] / row["total"]) * 100
@@ -342,10 +339,9 @@ if pagina == "Tiempo Real":
             paper_bgcolor="rgba(0,0,0,0)", font_color="#94a3b8",
             height=250, margin=dict(l=20, r=20, t=40, b=0),
         )
-        st.plotly_chart(fig_gauge, use_container_width=True)
+        st.plotly_chart(fig_gauge, width='stretch')
 
-    # Auto-refresh
-    st.caption(f"🔄 Actualización automática cada {REFRESH_INTERVAL_S}s")
+    st.caption(f"🔄 Actualización automática activa cada {REFRESH_INTERVAL_S}s")
     time.sleep(REFRESH_INTERVAL_S)
     st.rerun()
 
@@ -356,7 +352,6 @@ if pagina == "Tiempo Real":
 elif pagina == "Histórico":
     st.title("Análisis Histórico")
 
-    # Selector de rango temporal
     rango = st.radio(
         "Período de análisis",
         ["Hoy", "Última semana", "Último mes"],
@@ -365,8 +360,7 @@ elif pagina == "Histórico":
     dias = {"Hoy": 1, "Última semana": 7, "Último mes": 30}[rango]
     fecha_inicio = (datetime.utcnow() - timedelta(days=dias)).isoformat()
 
-    # ── Agregados por hora/día adaptados estructuralmente para PostgreSQL ──
-    sql_historico = f"""
+    sql_historico = """
         SELECT
             DATE(timestamp) as fecha,
             TO_CHAR(timestamp, 'HH24') as hora,
@@ -375,24 +369,23 @@ elif pagina == "Histórico":
             MIN(voltaje)   as voltaje_min,
             AVG(corriente) as corriente_avg,
             AVG(potencia)  as potencia_avg,
-            COUNT(*)                                                           as total,
+            COUNT(*)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    as total,
             SUM(CASE WHEN anomalia_detectada THEN 1 ELSE 0 END) as anomalias
         FROM telemetrias
-        WHERE dispositivo_id = {dispositivo_id}
-          AND timestamp >= '{fecha_inicio}'
+        WHERE dispositivo_id = :dispositivo_id
+          AND timestamp >= :fecha_inicio
         GROUP BY DATE(timestamp), TO_CHAR(timestamp, 'HH24')
         ORDER BY fecha, hora
     """
 
-    df_hist = query_df(sql_historico)
+    df_hist = query_df(sql_historico, params={"dispositivo_id": dispositivo_id, "fecha_inicio": fecha_inicio})
 
     if df_hist.empty:
-        st.info("No hay datos históricos para el período seleccionado.")
+        st.info("No hay datos históricos almacenados para el período seleccionado.")
     else:
         df_hist["datetime"] = pd.to_datetime(df_hist["fecha"].astype(str) + " " + df_hist["hora"].astype(str) + ":00")
         df_hist["tasa_anomalia"] = (df_hist["anomalias"] / df_hist["total"] * 100).round(1)
 
-        # KPIs en la cabecera
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         kpi1.metric("Voltaje promedio", f"{df_hist['voltaje_avg'].mean():.1f} V")
         kpi2.metric("Corriente promedio", f"{df_hist['corriente_avg'].mean():.2f} A")
@@ -403,7 +396,6 @@ elif pagina == "Histórico":
 
         st.divider()
 
-        # Gráfico de voltaje con banda min/max
         st.markdown('<div class="section-header">Voltaje — Promedio, Mínimo y Máximo</div>', unsafe_allow_html=True)
         fig_v = go.Figure([
             go.Scatter(
@@ -427,12 +419,12 @@ elif pagina == "Histórico":
             xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1e293b"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
-        st.plotly_chart(fig_v, use_container_width=True)
+        st.plotly_chart(fig_v, width='stretch')
 
         col_a, col_b = st.columns(2)
 
         with col_a:
-            st.markdown('<div class="section-header">Potencia consumida por hora</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">Potencia consumida promedio por hora</div>', unsafe_allow_html=True)
             fig_p = px.bar(
                 df_hist, x="datetime", y="potencia_avg",
                 color="potencia_avg", color_continuous_scale="Viridis",
@@ -443,10 +435,10 @@ elif pagina == "Histórico":
                 font_color="#94a3b8", height=280, margin=dict(l=0, r=0, t=10, b=0),
                 coloraxis_showscale=False, showlegend=False,
             )
-            st.plotly_chart(fig_p, use_container_width=True)
+            st.plotly_chart(fig_p, width='stretch')
 
         with col_b:
-            st.markdown('<div class="section-header">Tasa de anomalías (%) por hora</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">Tasa de anomalías (%) por segmento horario</div>', unsafe_allow_html=True)
             df_hist["color"] = df_hist["tasa_anomalia"].apply(
                 lambda x: "#ef4444" if x > 20 else ("#f59e0b" if x > 5 else "#22c55e")
             )
@@ -455,17 +447,16 @@ elif pagina == "Histórico":
                 y=df_hist["tasa_anomalia"],
                 marker_color=df_hist["color"],
             ))
-            fig_t.add_hline(y=5, line_dash="dash", line_color="#f59e0b", annotation_text="Umbral 5%")
+            fig_t.add_hline(y=5, line_dash="dash", line_color="#f59e0b", annotation_text="Umbral de Alerta (5%)")
             fig_t.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 font_color="#94a3b8", height=280, margin=dict(l=0, r=0, t=10, b=0),
                 yaxis_title="% anomalías", xaxis=dict(showgrid=False),
                 yaxis=dict(gridcolor="#1e293b"),
             )
-            st.plotly_chart(fig_t, use_container_width=True)
+            st.plotly_chart(fig_t, width='stretch')
 
-        # Tabla de resumen por día
-        st.markdown('<div class="section-header">Resumen diario</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Resumen de comportamiento diario</div>', unsafe_allow_html=True)
         df_dia = df_hist.groupby("fecha").agg(
             registros=("total", "sum"),
             anomalias=("anomalias", "sum"),
@@ -478,78 +469,75 @@ elif pagina == "Histórico":
         st.dataframe(
             df_dia.rename(columns={
                 "fecha": "Fecha", "registros": "Registros", "anomalias": "Anomalías",
-                "voltaje_prom": "V prom (V)", "corriente_prom": "I prom (A)", "tasa": "Tasa",
+                "voltaje_prom": "V prom (V)", "corriente_prom": "I prom (A)", "tasa": "Tasa Diario",
             }),
-            use_container_width=True, hide_index=True,
+            width='stretch', hide_index=True,
         )
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PÁGINA 3: INCIDENCIAS
 # ══════════════════════════════════════════════════════════════════════════════
 
 elif pagina == "Incidencias":
-    st.title("Registro de Incidencias")
-    st.caption("Historial completo de anomalías detectadas, con fecha, hora y nivel de criticidad.")
+    st.title("Registro de Incidencias Históricas")
+    st.caption("Historial de anomalías críticas validadas y estructuradas por criticidad.")
 
-    # Filtros
     col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
         sev_filtro = st.multiselect(
-            "Severidad", ["baja", "media", "alta", "critica"],
+            "Filtrar por Severidad", ["baja", "media", "alta", "critica"],
             default=["media", "alta", "critica"],
         )
     with col_f2:
         estado_filtro = st.multiselect(
-            "Estado", ["abierta", "en_revision", "resuelta", "descartada"],
+            "Filtrar por Estado", ["abierta", "en_revision", "resuelta", "descartada"],
             default=["abierta", "en_revision"],
         )
     with col_f3:
-        dias_inc = st.slider("Últimos días", 1, 90, 30)
+        dias_inc = st.slider("Ventana de días", 1, 90, 30)
 
     fecha_inicio_inc = (datetime.utcnow() - timedelta(days=dias_inc)).isoformat()
-    sev_str = ", ".join(f"'{s}'" for s in sev_filtro) or "'baja','media','alta','critica'"
-    est_str = ", ".join(f"'{e}'" for e in estado_filtro) or "'abierta','en_revision','resuelta','descartada'"
+    
+    sev_list = sev_filtro if sev_filtro else ["baja", "media", "alta", "critica"]
+    est_list = estado_filtro if estado_filtro else ["abierta", "en_revision", "resuelta", "descartada"]
 
-    df_inc = query_df(f"""
+    # Evita conflictos con vinculación de tuplas nativas en PostgreSQL
+    sql_incidencias = f"""
         SELECT
-            i.id,
-            i.created_at as fecha_hora,
-            i.tipo,
-            i.descripcion,
-            i.severidad,
-            i.estado,
-            i.score_anomalia,
-            d.nombre as dispositivo
+            i.id, i.created_at as fecha_hora, i.tipo, i.descripcion,
+            i.severidad, i.estado, i.score_anomalia, d.nombre as dispositivo
         FROM incidencias i
         LEFT JOIN dispositivos d ON d.id = i.dispositivo_id
-        WHERE i.dispositivo_id = {dispositivo_id}
-          AND i.severidad IN ({sev_str})
-          AND i.estado IN ({est_str})
-          AND i.created_at >= '{fecha_inicio_inc}'
-        ORDER BY i.created_at DESC
-        LIMIT 500
-    """)
+        WHERE i.dispositivo_id = :dispositivo_id
+          AND i.severidad IN ({','.join([f"'{s}'" for s in sev_list])})
+          AND i.estado IN ({','.join([f"'{e}'" for e in est_list])})
+          AND i.created_at >= :fecha_inicio_inc
+        ORDER BY i.created_at DESC LIMIT 500
+    """
 
-    # KPIs rápidos
+    df_inc = query_df(sql_incidencias, params={
+        "dispositivo_id": dispositivo_id,
+        "fecha_inicio_inc": fecha_inicio_inc
+    })
+
     total_inc = len(df_inc)
     criticas = len(df_inc[df_inc["severidad"] == "critica"]) if not df_inc.empty else 0
     abiertas = len(df_inc[df_inc["estado"] == "abierta"]) if not df_inc.empty else 0
 
     m1, m2, m3 = st.columns(3)
     m1.metric("Total incidencias", total_inc)
-    m2.metric("Críticas", criticas, delta="Requieren atención" if criticas > 0 else "Sin críticas")
-    m3.metric("Abiertas", abiertas)
+    m2.metric("Críticas", criticas, delta="Acción requerida" if criticas > 0 else "Sin alertas críticas")
+    m3.metric("Abiertas / En revisión", abiertas)
 
     st.divider()
 
     if df_inc.empty:
-        st.success("No hay incidencias para los filtros seleccionados.")
+        st.success("No se registran incidencias bajo los filtros seleccionados.")
     else:
-        # Gráfico de barras apiladas por severidad en el tiempo
-        st.markdown('<div class="section-header">Distribución de incidencias por severidad</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Distribución de incidencias por severidad temporal</div>', unsafe_allow_html=True)
         df_inc["fecha"] = pd.to_datetime(df_inc["fecha_hora"]).dt.date
         df_grouped = df_inc.groupby(["fecha", "severidad"]).size().reset_index(name="count")
+        
         fig_inc = px.bar(
             df_grouped, x="fecha", y="count", color="severidad",
             color_discrete_map=SEVERIDAD_COLORS,
@@ -562,15 +550,13 @@ elif pagina == "Incidencias":
             xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1e293b"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
-        st.plotly_chart(fig_inc, use_container_width=True)
+        st.plotly_chart(fig_inc, width='stretch')
 
-        # Tabla de eventos
-        st.markdown('<div class="section-header">Historial detallado de eventos</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Historial detallado de eventos eléctricos</div>', unsafe_allow_html=True)
 
         def badge(sev: str) -> str:
             return f'<span class="badge-{sev}">{sev.upper()}</span>'
 
-        # Renderizado fila por fila con badge HTML
         for _, row in df_inc.iterrows():
             with st.container():
                 c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 1.5, 1])
@@ -584,63 +570,58 @@ elif pagina == "Incidencias":
                 c5.markdown(f"score: `{score_str}`")
             st.divider()
 
-        # Descarga CSV
         csv_data = df_inc.to_csv(index=False).encode("utf-8")
         st.download_button(
-            "⬇️ Descargar incidencias como CSV",
+            "⬇️ Descargar incidencias filtradas (.CSV)",
             data=csv_data,
             file_name=f"incidencias_{datetime.utcnow().strftime('%Y%m%d')}.csv",
             mime="text/csv",
         )
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PÁGINA 4: SISTEMA
 # ══════════════════════════════════════════════════════════════════════════════
 
 elif pagina == "Sistema":
-    st.title("Estado del Sistema")
+    st.title("Estado de Salud e Inferencia de Dispositivos")
 
     col1, col2 = st.columns(2)
 
-    # Estado del backend
     with col1:
-        st.markdown('<div class="section-header">Backend FastAPI</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Estatus Backend FastAPI</div>', unsafe_allow_html=True)
         health = api_get("/health")
         if health:
-            st.success("Conectado")
+            st.success("Conectado exitosamente con el backend.")
             st.json(health)
         else:
-            st.error(f"No se puede conectar a {API_BASE}/health")
-            st.info("¿Está corriendo el servidor FastAPI?")
+            st.error(f"Imposible conectar con la dirección: {API_BASE}/health")
+            st.info("Por favor verifica si el servicio de FastAPI se encuentra inicializado localmente.")
 
-    # Estado del motor de IA
     with col2:
-        st.markdown('<div class="section-header">Motor de IA</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">Estatus Motor de IA (Bidirectional-LSTM)</div>', unsafe_allow_html=True)
         ia_status = api_get("/ia/status")
         if ia_status:
             modo = ia_status.get("mode", "—")
             listo = ia_status.get("ready", False)
             if listo:
-                st.success(f"Modo: **{modo.upper()}** — Listo para inferencia")
+                st.success(f"Modo actual: **{modo.upper()}** — Listo para inferencias de red en vivo.")
             else:
-                st.warning(f"Modo: **{modo}** — No listo")
+                st.warning(f"Modo: **{modo}** — El modelo se encuentra cargando estructuras o fuera de línea.")
             st.json(ia_status)
         else:
-            st.error("No se puede obtener el estado del motor de IA.")
+            st.error("Error crítico al recuperar el estado del modelo neuronal.")
 
     st.divider()
 
-    # Prueba manual de inferencia
-    st.markdown('<div class="section-header">Prueba de inferencia en vivo</div>', unsafe_allow_html=True)
-    st.caption("Envía valores manuales al motor de IA para ver el resultado en tiempo real.")
+    st.markdown('<div class="section-header">Módulo de inferencia en vivo (Prueba Manual)</div>', unsafe_allow_html=True)
+    st.caption("Inserta parámetros eléctricos directamente para evaluar el comportamiento predictivo del motor.")
 
     tc1, tc2, tc3 = st.columns(3)
-    test_v = tc1.number_input("Voltaje (V)", value=120.0, min_value=0.0, max_value=1000.0, step=0.5)
-    test_i = tc2.number_input("Corriente (A)", value=10.0, min_value=0.0, max_value=500.0, step=0.1)
-    test_f = tc3.number_input("Frecuencia (Hz)", value=60.0, min_value=0.0, max_value=200.0, step=0.5)
+    test_v = tc1.number_input("Voltaje Simulado (V)", value=120.0, min_value=0.0, max_value=1000.0, step=0.5)
+    test_i = tc2.number_input("Corriente Simulada (A)", value=10.0, min_value=0.0, max_value=500.0, step=0.1)
+    test_f = tc3.number_input("Frecuencia Simulada (Hz)", value=60.0, min_value=0.0, max_value=200.0, step=0.5)
 
-    if st.button("🔍 Analizar", type="primary"):
+    if st.button("🔍 Ejecutar Análisis Funcional", type="primary"):
         resultado = api_post("/analizar", {
             "voltaje": test_v,
             "corriente": test_i,
@@ -648,18 +629,17 @@ elif pagina == "Sistema":
         })
         if resultado:
             if resultado.get("anomalia"):
-                st.error(f"**ANOMALÍA** — Tipo: `{resultado.get('tipo')}` — Score: `{resultado.get('score', 0):.3f}`")
+                st.error(f"🚨 **ANOMALÍA CAPTURADA** — Tipo de Evento: `{resultado.get('tipo')}` — Score Neural: `{resultado.get('score', 0):.3f}`")
             else:
-                st.success(f"Normal — Score: `{resultado.get('score', 0):.3f}`")
-            with st.expander("Respuesta completa del backend"):
+                st.success(f"✅ **Muestra Estable** — Comportamiento Eléctrico Seguro — Score Neural: `{resultado.get('score', 0):.3f}`")
+            with st.expander("Ver metadata cruda de respuesta del backend"):
                 st.json(resultado)
         else:
-            st.error("Error al conectar con el backend.")
+            st.error("Error al establecer comunicación con el endpoint de inferencias.")
 
     st.divider()
 
-    # Estadísticas generales de la BD
-    st.markdown('<div class="section-header">Resumen de base de datos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">Métricas Estructurales de Base de Datos</div>', unsafe_allow_html=True)
     df_stats = query_df("""
         SELECT
             (SELECT COUNT(*) FROM telemetrias)  as total_telemetrias,
@@ -670,7 +650,7 @@ elif pagina == "Sistema":
     if not df_stats.empty:
         row = df_stats.iloc[0]
         s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Registros telemetría", f"{int(row['total_telemetrias']):,}")
-        s2.metric("Incidencias totales", f"{int(row['total_incidencias']):,}")
-        s3.metric("Dispositivos", int(row["total_dispositivos"]))
-        s4.metric("Usuarios", int(row["total_usuarios"]))
+        s1.metric("Registros de Telemetría", f"{int(row['total_telemetrias']):,}")
+        s2.metric("Historial de Incidencias", f"{int(row['total_incidencias']):,}")
+        s3.metric("Dispositivos Registrados", int(row["total_dispositivos"]))
+        s4.metric("Usuarios de Plataforma", int(row["total_usuarios"]))
