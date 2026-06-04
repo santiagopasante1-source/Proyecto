@@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)
 
 # Configuramos las rutas apuntando siempre a la raíz del proyecto
 CSV_PATH = os.path.join(BASE_DIR, "dataset_entrenamiento.csv")
-MODEL_SAVE_PATH = os.path.join(BASE_DIR, "models", "lstm_anomaly_detector.keras")
+MODEL_SAVE_PATH = os.path.join(BASE_DIR, "models", "lstm_anomaly_detector.h5")
 
 SEQUENCE_LENGTH = 10
 FEATURES = ["voltaje", "corriente", "frecuencia"]
