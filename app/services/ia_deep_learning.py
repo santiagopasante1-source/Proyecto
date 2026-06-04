@@ -22,6 +22,8 @@ from typing import Any
 
 import numpy as np
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Importación condicional — TensorFlow es opcional en entornos sin GPU
@@ -69,8 +71,15 @@ class DeepAnomalyDetector:
             if os.path.exists(MODEL_SAVE_PATH):
                 self._load_model()
             else:
+                # CANDADO: Si no existe el modelo físico en producción, detenemos el sistema
+                if settings.ENVIRONMENT != "development":
+                    raise RuntimeError(
+                        f"❌ ERROR CRÍTICO: El archivo del modelo no existe en la ruta '{MODEL_SAVE_PATH}'. "
+                        f"Asegúrate de haber subido tu nuevo archivo Keras a GitHub."
+                    )
+                
+                # Comportamiento local si estás desarrollando
                 self.model = self._build_model()
-                # Auto-entrenamiento si el archivo .keras no existe pero el CSV sí
                 if os.path.exists(CSV_ENTRENAMIENTO_DEFAULT):
                     logger.info("Archivo '%s' detectado. Iniciando entrenamiento inicial automático...", CSV_ENTRENAMIENTO_DEFAULT)
                     self.entrenar_con_csv(CSV_ENTRENAMIENTO_DEFAULT)
@@ -113,13 +122,31 @@ class DeepAnomalyDetector:
 
     def _load_model(self) -> None:
         try:
-            self.model = tf.keras.models.load_model(MODEL_SAVE_PATH)
+            # 1. Cargamos de forma segura omitiendo la compilación inicial conflictiva
+            self.model = tf.keras.models.load_model(MODEL_SAVE_PATH, compile=False)
+            
+            # 2. Compilamos manualmente con la configuración exacta original
+            self.model.compile(
+                optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+                loss="binary_crossentropy",
+                metrics=["accuracy", tf.keras.metrics.AUC(name="auc")],
+            )
             self._is_ready = True
-            logger.info("Modelo LSTM cargado desde %s", MODEL_SAVE_PATH)
+            logger.info("✅ Modelo LSTM cargado y compilado con éxito desde %s", MODEL_SAVE_PATH)
+            
         except Exception as exc:
-            logger.error("Error cargando modelo guardado: %s. Se reconstruirá.", exc)
+            logger.error("Error cargando el archivo del modelo guardado: %s", exc)
+            
+            # Si la lectura falla en producción, rompemos el flujo inmediatamente
+            if settings.ENVIRONMENT != "development":
+                raise RuntimeError(
+                    f"❌ ERROR CRÍTICO: No se pudo cargar el modelo Bidirectional-LSTM en producción: {exc}. "
+                    f"Verifica la integridad del archivo y las dependencias."
+                ) from exc
+            
+            # Fallback exclusivo para entorno de desarrollo local
+            logger.info("Modo Desarrollo: reconstruyendo y reentrenando modelo local...")
             self.model = self._build_model()
-            # Si falla al cargar el .keras corrupto, intenta reentrenar con el CSV si está disponible
             if os.path.exists(CSV_ENTRENAMIENTO_DEFAULT):
                 logger.info("Intentando regenerar modelo usando '%s'...", CSV_ENTRENAMIENTO_DEFAULT)
                 self.entrenar_con_csv(CSV_ENTRENAMIENTO_DEFAULT)
@@ -175,13 +202,10 @@ class DeepAnomalyDetector:
     def predecir(self, datos_entrada: dict[str, Any]) -> dict[str, Any]:
         """
         Procesa una muestra, la agrega al buffer y realiza inferencia cuando la ventana está lista.
-        Siempre devuelve un resultado — nunca bloquea la API.
         """
-        # Extraer características en orden fijo
         nuevo_dato = [datos_entrada.get(f, 0.0) for f in self.FEATURES]
         self._buffer.append(nuevo_dato)
 
-        # Buffer en proceso de calibración
         if len(self._buffer) < self.sequence_length:
             return {
                 "anomalia": False,
@@ -191,7 +215,6 @@ class DeepAnomalyDetector:
                 "mensaje": f"Calibrando LSTM... ({len(self._buffer)}/{self.sequence_length} muestras)",
             }
 
-        # Modelo no entrenado
         if not self._is_ready or self.model is None:
             return {
                 "anomalia": False,
@@ -201,7 +224,6 @@ class DeepAnomalyDetector:
                 "mensaje": "Modelo LSTM pendiente de entrenamiento.",
             }
 
-        # Inferencia real
         try:
             input_data = np.array(list(self._buffer), dtype=np.float32).reshape(
                 1, self.sequence_length, self.features
@@ -228,8 +250,6 @@ class DeepAnomalyDetector:
                 "tipo": None, "confianza": 0.0,
                 "mensaje": f"Error de inferencia: {exc}",
             }
-
-    # ── Helpers 
 
     def _create_sequences(
         self, x: np.ndarray, y: np.ndarray

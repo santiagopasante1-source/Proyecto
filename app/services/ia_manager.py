@@ -1,14 +1,3 @@
-"""
-app/services/ia_manager.py
-──────────────────────────
-Manager unificado del motor de IA.
-Actúa como fachada (Facade pattern) sobre los detectores disponibles:
-  - "classic" → IsolationForest (scikit-learn) — rápido, sin GPU
-  - "deep"    → LSTM bidireccional (TensorFlow) — mayor precisión con datos históricos
-
-El endpoint y el lifespan solo conocen IAManager.process_data().
-Para cambiar de motor: modifica IA_MODE en .env y reinicia.
-"""
 from __future__ import annotations
 
 import logging
@@ -59,8 +48,17 @@ class IAManager:
             self.detector = DeepAnomalyDetector(
                 sequence_length=settings.LSTM_SEQUENCE_LENGTH,
             )
-            # Solo entrena desde cero si el modelo no fue cargado desde disco
+            
+            # ── CANDADO DE SEGURIDAD PARA PRODUCCIÓN ─────────────────────────
             if not self.detector._is_ready:
+                # Si no está en modo desarrollo (es decir, está en Render/Producción)
+                if settings.ENVIRONMENT != "development":
+                    raise RuntimeError(
+                        "❌ ERROR CRÍTICO: El modelo Bidirectional-LSTM real no se pudo cargar en producción. "
+                        "Se aborta el inicio para evitar el entrenamiento automático en la nube."
+                    )
+                
+                # Solo entrena desde cero si está en desarrollo local
                 csv = settings.TRAINING_CSV_PATH
                 if os.path.exists(csv):
                     self.detector.entrenar_con_csv(csv)
@@ -69,6 +67,10 @@ class IAManager:
                     self.detector.entrenar_con_dummy_data()
 
         except Exception as exc:
+            # Si es nuestro error crítico de producción, lo relanzamos para frenar a Render
+            if "ERROR CRÍTICO" in str(exc):
+                raise exc
+                
             logger.error("Error inicializando modo deep: %s. Degradando a classic.", exc)
             self.mode = "classic"
             self._init_classic()
@@ -78,13 +80,10 @@ class IAManager:
     def process_data(self, datos: dict[str, Any]) -> dict[str, Any]:
         """
         Punto de entrada unificado para análisis de telemetría.
-        Llama a predecir() o process_data() según el detector activo.
-        Nunca lanza excepciones — siempre devuelve un resultado seguro.
         """
         if self.detector is None:
             return self._fallback("Detector no inicializado.")
         try:
-            # Ambos detectores exponen predecir(); ia_service también process_data()
             if hasattr(self.detector, "predecir"):
                 return self.detector.predecir(datos)
             return self.detector.process_data(datos)
@@ -92,7 +91,6 @@ class IAManager:
             logger.error("Error en inferencia IA: %s", exc)
             return self._fallback(str(exc))
 
-    # Alias para retrocompatibilidad con main.py → manager.procesar(datos)
     def procesar(self, datos: dict[str, Any]) -> dict[str, Any]:
         return self.process_data(datos)
 
@@ -102,7 +100,7 @@ class IAManager:
         return {
             "mode": self.mode,
             "detector_class": type(self.detector).__name__ if self.detector else "None",
-            "ready": self.detector is not None,
+            "ready": self.detector is not None and getattr(self.detector, "_is_ready", False),
         }
 
     @staticmethod
