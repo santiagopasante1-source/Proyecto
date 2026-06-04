@@ -18,3 +18,4 @@ python-multipart>=0.0.9
 # --- Deep Learning (Optimizado para CPU en Render) ---
 tensorflow-cpu==2.15.0
 keras==2.15.0
+tf_keras
