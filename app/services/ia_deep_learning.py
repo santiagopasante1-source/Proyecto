@@ -26,7 +26,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Importación condicional — TensorFlow es opcional en entornos sin GPU
+# Importación condicional
 try:
     import tensorflow as tf
     TF_AVAILABLE = True
