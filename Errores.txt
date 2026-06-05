@@ -1,6 +1,12 @@
+    async with original_context(app) as maybe_original_state:
+    _load_state(
+  File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_lib.py", line 435, in _load_state
+  File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
     trackable.load_own_variables(weights_store.get(inner_path))
   File "/opt/venv/lib/python3.10/site-packages/keras/src/engine/base_layer.py", line 3531, in load_own_variables
+    return await anext(self.gen)
     raise ValueError(
+  File "/opt/venv/lib/python3.10/site-packages/fastapi/routing.py", line 216, in merged_lifespan
 ValueError: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']
 The above exception was the direct cause of the following exception:
 Traceback (most recent call last):
@@ -8,51 +14,45 @@ Traceback (most recent call last):
     async with self.lifespan_context(app) as maybe_state:
   File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
     return await anext(self.gen)
-  File "/opt/venv/lib/python3.10/site-packages/fastapi/routing.py", line 216, in merged_lifespan
-    async with original_context(app) as maybe_original_state:
-  File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
-    return await anext(self.gen)
-  File "/opt/venv/lib/python3.10/site-packages/fastapi/routing.py", line 216, in merged_lifespan
-    raise RuntimeError(
-    async with original_context(app) as maybe_original_state:
-RuntimeError: ❌ ERROR CRÍTICO: No se pudo cargar el modelo Bidirectional-LSTM en producción: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']. Verifica la integridad del archivo y las dependencias.
-    self._init_deep()
-  File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
-  File "/app/app/services/ia_manager.py", line 72, in _init_deep
-    return await anext(self.gen)
     raise exc
-  File "/app/app/main.py", line 83, in lifespan
+    async with original_context(app) as maybe_original_state:
+  File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
   File "/app/app/services/ia_manager.py", line 48, in _init_deep
-    app.state.detector = IAManager(mode=settings.IA_MODE)
+    return await anext(self.gen)
     self.detector = DeepAnomalyDetector(
-  File "/app/app/services/ia_manager.py", line 22, in __init__
+  File "/app/app/main.py", line 83, in lifespan
   File "/app/app/services/ia_deep_learning.py", line 72, in __init__
-    self._initialize()
+    app.state.detector = IAManager(mode=settings.IA_MODE)
+  File "/app/app/services/ia_manager.py", line 22, in __init__
     self._load_model()
-  File "/app/app/services/ia_manager.py", line 28, in _initialize
+    self._initialize()
   File "/app/app/services/ia_deep_learning.py", line 142, in _load_model
-2026-06-05 16:03:32.998 Application startup failed. Exiting.
+  File "/app/app/services/ia_manager.py", line 28, in _initialize
+    self._init_deep()
+    raise RuntimeError(
+  File "/app/app/services/ia_manager.py", line 72, in _init_deep
+RuntimeError: ❌ ERROR CRÍTICO: No se pudo cargar el modelo Bidirectional-LSTM en producción: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']. Verifica la integridad del archivo y las dependencias.
+2026-06-05 16:10:13.817 Application startup failed. Exiting.
 🗄️  Inicializando tablas de la base de datos...
 🤖 Cargando motor de IA en modo: deep...
-2026-06-05 16:03:35.061 Started server process [1]
-2026-06-05 16:03:35.062 Waiting for application startup.
-2026-06-05 16:03:37.578564: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
-2026-06-05 16:03:37.580342: I external/local_tsl/tsl/cuda/cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
-2026-06-05 16:03:37.608804: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:9261] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
-2026-06-05 16:03:37.608837: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:607] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
-2026-06-05 16:03:37.609944: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1515] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
-2026-06-05 16:03:37.615151: I external/local_tsl/tsl/cuda/cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
-2026-06-05 16:03:37.615390: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+2026-06-05 16:10:16.156 Started server process [1]
+2026-06-05 16:10:16.156 Waiting for application startup.
+2026-06-05 16:10:18.799363: I tensorflow/core/util/port.cc:113] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2026-06-05 16:10:18.801370: I external/local_tsl/tsl/cuda/cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+2026-06-05 16:10:18.829879: E external/local_xla/xla/stream_executor/cuda/cuda_dnn.cc:9261] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered
+2026-06-05 16:10:18.829914: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:607] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered
+2026-06-05 16:10:18.831020: E external/local_xla/xla/stream_executor/cuda/cuda_blas.cc:1515] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered
+2026-06-05 16:10:18.836440: I external/local_tsl/tsl/cuda/cudart_stub.cc:31] Could not find cuda drivers on your machine, GPU will not be used.
+2026-06-05 16:10:18.836709: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
 To enable the following instructions: AVX2 AVX512F AVX512_VNNI AVX512_BF16 AVX_VNNI AMX_TILE AMX_INT8 AMX_BF16 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
-2026-06-05 16:03:38.232927: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
-Error cargando el archivo del modelo guardado: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']
+2026-06-05 16:10:19.467905: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
     _load_state(
   File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_lib.py", line 457, in _load_state
     _load_state(
-2026-06-05 16:03:39.577 Traceback (most recent call last):
-  File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_lib.py", line 435, in _load_state
+  File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_lib.py", line 457, in _load_state
+Error cargando el archivo del modelo guardado: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']
+2026-06-05 16:10:20.830 Traceback (most recent call last):
   File "/app/app/services/ia_deep_learning.py", line 126, in _load_model
-    trackable.load_own_variables(weights_store.get(inner_path))
     self.model = tf.keras.models.load_model(MODEL_SAVE_PATH, compile=False)
   File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_api.py", line 254, in load_model
     return saving_lib.load_model(
@@ -64,13 +64,10 @@ Error cargando el archivo del modelo guardado: Layer 'lstm_cell' expected 3 vari
     _load_container_state(
   File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_lib.py", line 534, in _load_container_state
     _load_state(
-  File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_lib.py", line 457, in _load_state
-    return await anext(self.gen)
+  File "/opt/venv/lib/python3.10/site-packages/keras/src/saving/saving_lib.py", line 435, in _load_state
+    trackable.load_own_variables(weights_store.get(inner_path))
   File "/opt/venv/lib/python3.10/site-packages/keras/src/engine/base_layer.py", line 3531, in load_own_variables
-  File "/opt/venv/lib/python3.10/site-packages/fastapi/routing.py", line 216, in merged_lifespan
-    async with original_context(app) as maybe_original_state:
     raise ValueError(
-  File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
 ValueError: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']
 The above exception was the direct cause of the following exception:
 Traceback (most recent call last):
@@ -82,21 +79,27 @@ Traceback (most recent call last):
     async with original_context(app) as maybe_original_state:
   File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
     return await anext(self.gen)
+  File "/opt/venv/lib/python3.10/site-packages/fastapi/routing.py", line 216, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+  File "/root/.nix-profile/lib/python3.10/contextlib.py", line 199, in __aenter__
+    return await anext(self.gen)
+    self.detector = DeepAnomalyDetector(
   File "/app/app/main.py", line 83, in lifespan
     app.state.detector = IAManager(mode=settings.IA_MODE)
+  File "/app/app/services/ia_deep_learning.py", line 72, in __init__
   File "/app/app/services/ia_manager.py", line 22, in __init__
+    self._load_model()
     self._initialize()
   File "/app/app/services/ia_manager.py", line 28, in _initialize
+  File "/app/app/services/ia_deep_learning.py", line 142, in _load_model
     self._init_deep()
+    raise RuntimeError(
   File "/app/app/services/ia_manager.py", line 72, in _init_deep
+RuntimeError: ❌ ERROR CRÍTICO: No se pudo cargar el modelo Bidirectional-LSTM en producción: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']. Verifica la integridad del archivo y las dependencias.
     raise exc
   File "/app/app/services/ia_manager.py", line 48, in _init_deep
-    self.detector = DeepAnomalyDetector(
-  File "/app/app/services/ia_deep_learning.py", line 72, in __init__
-    self._load_model()
-  File "/app/app/services/ia_deep_learning.py", line 142, in _load_model
-    raise RuntimeError(
-RuntimeError: ❌ ERROR CRÍTICO: No se pudo cargar el modelo Bidirectional-LSTM en producción: Layer 'lstm_cell' expected 3 variables, but received 0 variables during loading. Expected: ['bidirectional/forward_lstm/lstm_cell/kernel:0', 'bidirectional/forward_lstm/lstm_cell/recurrent_kernel:0', 'bidirectional/forward_lstm/lstm_cell/bias:0']. Verifica la integridad del archivo y las dependencias.
-2026-06-05 16:03:39.578 Application startup failed. Exiting.
+2026-06-05 16:10:20.830 Application startup failed. Exiting.
 🗄️  Inicializando tablas de la base de datos...
 🤖 Cargando motor de IA en modo: deep...
+2026-06-05 16:10:22.981 Started server process [1]
+2026-06-05 16:10:22.981 Waiting for application startup.

@@ -35,7 +35,7 @@ except ImportError:
     TF_AVAILABLE = False
     logger.warning("TensorFlow no instalado. DeepAnomalyDetector no estará disponible.")
 
-MODEL_SAVE_PATH = "models/lstm_anomaly_detector.keras"
+MODEL_SAVE_PATH = "models/lstm_anomaly_detector.h5"
 CSV_ENTRENAMIENTO_DEFAULT = "dataset_entrenamiento.csv"
 
 
