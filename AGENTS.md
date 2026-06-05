@@ -65,7 +65,7 @@ python scripts/simulador_realista.py --interval 3 # Simulator
 | 5 | Copy Railway URL → paste in Streamlit Cloud **Secrets** as `API_BASE` |
 | 6 | In Streamlit Cloud **Secrets** also add: `DATABASE_URL` (same Neon URL) |
 
-**Gotchas**: Railway uses 1GB RAM, enough for `tensorflow-cpu`. Build takes ~5-10 min first time. The free tier does NOT sleep (unlike Render).
+**Gotchas**: Railway uses 1GB RAM, enough for `tensorflow`. Build takes ~5-10 min first time. The free tier does NOT sleep (unlike Render).
 
 ## Style notes
 
