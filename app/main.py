@@ -6,19 +6,24 @@ Cambios realizados:
   - Inyección de dependencias formal para acceder al motor de IA.
   - Protección de Base.metadata.create_all para que solo corra en desarrollo.
   - Tipado estricto y manejo limpio de excepciones.
+  - Background task para detección de desconexiones de dispositivos.
 """
 from contextlib import asynccontextmanager
+import asyncio
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy import text as sql_text
 
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, check_db_connection, engine
 from app.api.endpoints import router as telemetry_router
 from app.api.auth import router as auth_router
 from app.services.ia_manager import IAManager
+from app.services.device_monitor import DeviceMonitor
 
 # Registro explícito de todos los modelos antes de create_all
 import app.models  # noqa: F401
@@ -83,9 +88,15 @@ async def lifespan(app: FastAPI):
     app.state.detector = IAManager(mode=settings.IA_MODE)
     print(f"✅ Motor de IA listo: {app.state.detector.status}")
 
+    # 3. Inicializar monitor de desconexión de dispositivos
+    print("📡 Iniciando monitor de dispositivos...")
+    app.state.device_monitor = DeviceMonitor()
+    app.state.device_monitor.start()
+
     yield
 
-    # 3. Limpieza al apagar el servidor
+    # 4. Limpieza al apagar el servidor
+    app.state.device_monitor.stop()
     app.state.detector = None
     print("🛑 Servidor detenido correctamente.")
 
@@ -144,6 +155,41 @@ def health_check(request: Request):
         },
         "ia": detector.status if detector else {"ready": False},
     }
+
+
+@app.get("/api/v1/devices/status", tags=["Dispositivos"])
+def devices_status(request: Request, db: Session = Depends(get_db)):
+    """Estado de conexión de todos los dispositivos activos."""
+    from datetime import datetime, timezone, timedelta
+    from app.models.dispositivo import Dispositivo
+
+    TIMEOUT = 30
+    ahora = datetime.now(timezone.utc)
+    umbral = ahora - timedelta(seconds=TIMEOUT)
+    dispositivos = db.query(Dispositivo).filter(Dispositivo.is_active == True).all()
+
+    resultado = []
+    for d in dispositivos:
+        estado = "desconocido"
+        ultimo_ping = d.ultimo_ping
+
+        if ultimo_ping is None:
+            estado = "nunca_conectado"
+        elif ultimo_ping < umbral:
+            segundos_desconectado = int((ahora - ultimo_ping).total_seconds())
+            estado = f"desconectado ({segundos_desconectado}s)"
+        else:
+            estado = "conectado"
+
+        resultado.append({
+            "id": d.id,
+            "nombre": d.nombre or f"Dispositivo {d.id}",
+            "ubicacion": d.ubicacion,
+            "ultimo_ping": ultimo_ping.isoformat() if ultimo_ping else None,
+            "estado": estado,
+        })
+
+    return {"dispositivos": resultado}
 
 
 @app.get("/ia/status", tags=["Diagnóstico"])

@@ -7,12 +7,13 @@ Incluye soporte asíncrono para alertas de Telegram y banderas de Streamlit.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.dispositivo import Dispositivo
-from app.models.incidencia import Incidencia, SeveridadEnum
+from app.models.incidencia import Incidencia, SeveridadEnum, EstadoEnum
 from app.models.telemetria import Telemetria
 from app.schemas.telemetria import TelemetriaCreate, TelemetriaIAResult, TelemetriaResponse
 
@@ -53,7 +54,48 @@ def ingest_telemetry(
     if not dispositivo:
         raise HTTPException(status_code=404, detail=f"Dispositivo {payload.dispositivo_id} no encontrado.")
 
-    # 3. Persistir telemetría inicial (por defecto entra como normal)
+    # 3. Detectar reconexión: cerrar DESCONEXION abierta y crear RECONEXION
+    ahora = datetime.now(timezone.utc)
+    reconexion_detectada = False
+
+    desconexion_abierta = db.query(Incidencia).filter(
+        Incidencia.dispositivo_id == dispositivo.id,
+        Incidencia.tipo == "DESCONEXION",
+        Incidencia.estado == EstadoEnum.abierta,
+    ).first()
+
+    if desconexion_abierta:
+        desconexion_abierta.estado = EstadoEnum.resuelta
+        desconexion_abierta.resolved_at = ahora
+        desconexion_abierta.notas = (
+            f"Reconexión automática detectada — "
+            f"V={payload.voltaje}V I={payload.corriente}A F={payload.frecuencia or 60.0}Hz"
+        )
+        db.add(desconexion_abierta)
+
+        incidencia_recon = Incidencia(
+            dispositivo_id=dispositivo.id,
+            tipo="RECONEXION",
+            descripcion=(
+                f"El dispositivo '{dispositivo.nombre or dispositivo.id}' se reconectó "
+                f"tras una desconexión. Voltaje: {payload.voltaje}V, Corriente: {payload.corriente}A"
+            ),
+            severidad=SeveridadEnum.media,
+            estado=EstadoEnum.resuelta,
+            resolved_at=ahora,
+        )
+        db.add(incidencia_recon)
+        reconexion_detectada = True
+
+    # Actualizar último ping del dispositivo
+    dispositivo.ultimo_ping = ahora
+    db.add(dispositivo)
+    db.commit()
+
+    if reconexion_detectada:
+        logger.info("RECONEXION registrada para dispositivo %s", dispositivo.id)
+
+    # 4. Persistir telemetría inicial (por defecto entra como normal)
     telemetria = Telemetria(
         dispositivo_id=payload.dispositivo_id,
         voltaje=payload.voltaje,
@@ -66,7 +108,7 @@ def ingest_telemetry(
     db.commit()
     db.refresh(telemetria)
 
-    # 4. Inferencia IA
+    # 5. Inferencia IA
     datos_analisis = {
         "voltaje": payload.voltaje, 
         "corriente": payload.corriente, 
@@ -74,7 +116,7 @@ def ingest_telemetry(
     }
     ia_resultado = detector.procesar(datos_analisis)
 
-    # 5. Registrar incidencia e hilos de notificación si es anomalía
+    # 6. Registrar incidencia e hilos de notificación si es anomalía
     if ia_resultado.get("anomalia"):
         score = ia_resultado.get("score", 0.0)
         
@@ -116,7 +158,7 @@ def ingest_telemetry(
         except Exception as telegram_err:
             logger.error(f"Error al programar la alerta de Telegram: {telegram_err}")
 
-    # 6. Retorno final estructurado al cliente (Simulador / ESP32)
+    # 7. Retorno final estructurado al cliente (Simulador / ESP32)
     return TelemetriaIAResult(
         telemetria=TelemetriaResponse.model_validate(telemetria),
         ia_resultado=ia_resultado,

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 import pandas as pd
@@ -128,6 +128,14 @@ def get_user_devices(uid: int) -> pd.DataFrame:
     )
 
 
+@st.cache_data(ttl=5)
+def get_device_status(uid: int) -> list[dict]:
+    res = api_get("/api/v1/devices/status")
+    if not res:
+        return []
+    return res.get("dispositivos", [])
+
+
 # ── Estilos globales ──────────────────────────────────────────────────────────
 
 st.markdown("""
@@ -224,6 +232,23 @@ with st.sidebar:
         dispositivo_id = 1
         st.warning("No hay dispositivos activos en la BD.")
 
+    # Estado de conexión del dispositivo seleccionado
+    dev_status_list = get_device_status(uid)
+    current_dev_status = next(
+        (d for d in dev_status_list if d["id"] == dispositivo_id),
+        None,
+    )
+    if current_dev_status:
+        estado = current_dev_status["estado"]
+        if estado == "conectado":
+            st.success(f"✅ {current_dev_status['nombre']}: **Conectado**")
+        elif estado and estado.startswith("desconectado"):
+            st.error(f"⚠️ {current_dev_status['nombre']}: **{estado.upper()}**")
+        elif estado == "nunca_conectado":
+            st.warning(f"🟡 {current_dev_status['nombre']}: **Sin datos**")
+        else:
+            st.info(f"❓ {current_dev_status['nombre']}: {estado}")
+
     st.caption(f"API: `{API_BASE}`")
 
     # Indicador de salud del API (cacheado 5s)
@@ -247,6 +272,21 @@ if pagina == "Tiempo Real":
     st.title("Monitoreo en Tiempo Real")
     st.caption("Los gráficos se actualizan automáticamente consultando la API y la base de datos.")
     st.write(f"Reloj del sistema: {datetime.now().strftime('%H:%M:%S')}")
+
+    # ── Banner de desconexión si el dispositivo no responde ──
+    dev_status_list = get_device_status(uid)
+    current_dev_status = next(
+        (d for d in dev_status_list if d["id"] == dispositivo_id),
+        None,
+    )
+    if current_dev_status and current_dev_status["estado"] and current_dev_status["estado"].startswith("desconectado"):
+        st.error(
+            f"🚨 **CORTE DE ENERGÍA DETECTADO** — "
+            f"El dispositivo '{current_dev_status['nombre']}' dejó de enviar datos. "
+            f"Estado: {current_dev_status['estado']}. "
+            "Se ha generado un reporte de incidencia automático.",
+            icon="⚡",
+        )
     
     col1, col2, col3, col4 = st.columns(4)
 
@@ -430,7 +470,7 @@ elif pagina == "Histórico":
         horizontal=True,
     )
     dias = {"Hoy": 1, "Última semana": 7, "Último mes": 30}[rango]
-    fecha_inicio = (datetime.utcnow() - timedelta(days=dias)).isoformat()
+    fecha_inicio = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
 
     sql_historico = """
         SELECT
@@ -568,7 +608,7 @@ elif pagina == "Incidencias":
     with col_f3:
         dias_inc = st.slider("Ventana de días", 1, 90, 30)
 
-    fecha_inicio_inc = (datetime.utcnow() - timedelta(days=dias_inc)).isoformat()
+    fecha_inicio_inc = (datetime.now(timezone.utc) - timedelta(days=dias_inc)).isoformat()
     
     sev_list = sev_filtro if sev_filtro else ["baja", "media", "alta", "critica"]
     est_list = estado_filtro if estado_filtro else ["abierta", "en_revision", "resuelta", "descartada"]
@@ -646,7 +686,7 @@ elif pagina == "Incidencias":
         st.download_button(
             "Descargar incidencias filtradas (.CSV)",
             data=csv_data,
-            file_name=f"incidencias_{datetime.utcnow().strftime('%Y%m%d')}.csv",
+            file_name=f"incidencias_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv",
             mime="text/csv",
         )
 

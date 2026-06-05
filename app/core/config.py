@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
 
+    # ── Detección de cortes eléctricos
+    OFFLINE_TIMEOUT_SECONDS: int = 45
+
     # ── Configuración Pydantic-Settings 
     model_config = SettingsConfigDict(
         env_file=".env",
