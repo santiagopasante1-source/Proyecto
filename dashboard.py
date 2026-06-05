@@ -32,13 +32,13 @@ load_dotenv()
 # ── Configuración de página 
 st.set_page_config(
     page_title="IoT Anomaly Monitor",
-    page_icon="⚡",
+    page_icon="chart_with_upwards_trend",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ── Constantes configurables 
-API_BASE = "http://localhost:8000"
+API_BASE = os.getenv("API_BASE", "http://localhost:8000")
 
 # Leer la base de datos desde las variables de entorno orientadas a PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -47,7 +47,7 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 
 DB_URL = DATABASE_URL
 
-REFRESH_INTERVAL_S = 3                                         # Segundos entre actualizaciones en tiempo real
+REFRESH_INTERVAL_S = 30                                        # Segundos entre actualizaciones en tiempo real
 MAX_REALTIME_POINTS = 60                                       # Puntos visibles en el gráfico en vivo
 SEVERIDAD_COLORS = {
     "baja":     "#3B82F6",   # azul
@@ -55,6 +55,40 @@ SEVERIDAD_COLORS = {
     "alta":     "#EF4444",   # rojo
     "critica":  "#7C3AED",   # púrpura
 }
+
+# ── Auth helpers ─────────────────────────────────────────────────────────────
+
+def api_get(endpoint: str, timeout: int = 5) -> dict | None:
+    token = st.session_state.get("token")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        r = requests.get(f"{API_BASE}{endpoint}", headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
+def api_post(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
+    token = st.session_state.get("token")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        r = requests.post(f"{API_BASE}{endpoint}", json=payload, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
+def api_post_auth(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
+    """POST sin token — para login/register."""
+    try:
+        r = requests.post(f"{API_BASE}{endpoint}", json=payload, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
 
 # ── Helpers de acceso a datos ─────────────────────────────────────────────────
 
@@ -68,24 +102,6 @@ def get_db_engine():
     )
 
 
-def api_get(endpoint: str, timeout: int = 5) -> dict | None:
-    try:
-        r = requests.get(f"{API_BASE}{endpoint}", timeout=timeout)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
-
-
-def api_post(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
-    try:
-        r = requests.post(f"{API_BASE}{endpoint}", json=payload, timeout=timeout)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
-
-
 def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
     """Ejecuta una consulta SQL parametrizada y devuelve un DataFrame. Devuelve vacío en error."""
     try:
@@ -95,6 +111,21 @@ def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
     except Exception as exc:
         st.warning(f"Error de base de datos: {exc}")
         return pd.DataFrame()
+
+
+# ── Helpers cacheados (evitan llamadas repetidas en cada rerun) ───────────────
+
+@st.cache_data(ttl=5)
+def check_health() -> dict | None:
+    return api_get("/health")
+
+
+@st.cache_data(ttl=30)
+def get_user_devices(uid: int) -> pd.DataFrame:
+    return query_df(
+        "SELECT id, nombre FROM dispositivos WHERE is_active = TRUE AND usuario_id = :uid",
+        params={"uid": uid},
+    )
 
 
 # ── Estilos globales ──────────────────────────────────────────────────────────
@@ -130,12 +161,46 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# ── Auth state ────────────────────────────────────────────────────────────────
+
+if "token" not in st.session_state:
+    st.session_state.token = None
+if "user" not in st.session_state:
+    st.session_state.user = None
+if "login_success" not in st.session_state:
+    st.session_state.login_success = False
+
+# ── Login / Register page ─────────────────────────────────────────────────────
+
+if not st.session_state.token:
+    st.title("Inicio de Sesión")
+    with st.form("login_form"):
+        l_user = st.text_input("Usuario")
+        l_pass = st.text_input("Contraseña", type="password")
+        if st.form_submit_button("Ingresar", type="primary"):
+            with st.spinner("Iniciando sesión..."):
+                res = api_post_auth("/api/v1/auth/login", {"username": l_user, "password": l_pass})
+            if res:
+                st.session_state.token = res["access_token"]
+                st.session_state.user = res["user"]
+                st.session_state.login_success = True
+                st.rerun()
+            else:
+                st.error("Credenciales inválidas o backend sin conexión")
+
+    st.stop()
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/circuit.png", width=64)
-    st.title("IoT Monitor ⚡")
-    st.caption("Sistema de detección de anomalías eléctricas")
+    st.title("IoT Monitor")
+    st.caption(f"Usuario: {st.session_state.user.get('username', '')}")
+    if st.button("Cerrar Sesión"):
+        st.session_state.token = None
+        st.session_state.user = None
+        st.cache_data.clear()
+        st.rerun()
     st.divider()
 
     pagina = st.radio(
@@ -145,8 +210,9 @@ with st.sidebar:
     )
     st.divider()
 
-    # Selector de dispositivo con soporte estricto de PostgreSQL (is_active = TRUE)
-    df_disp = query_df("SELECT id, nombre FROM dispositivos WHERE is_active = TRUE")
+    # Selector de dispositivo — solo muestra los asignados al usuario actual (cacheado 30s)
+    uid = st.session_state.user.get("id")
+    df_disp = get_user_devices(uid)
         
     if not df_disp.empty:
         dispositivo_id = st.selectbox(
@@ -160,12 +226,18 @@ with st.sidebar:
 
     st.caption(f"API: `{API_BASE}`")
 
-    # Indicador de salud del API
-    health = api_get("/health")
+    # Indicador de salud del API (cacheado 5s)
+    health = check_health()
     if health and health.get("status") == "ok":
-        st.success("Backend ✓ conectado")
+        st.success("Backend conectado")
     else:
-        st.error("Backend ✗ sin conexión")
+        st.error("Backend sin conexion")
+
+# ── Toast de bienvenida después del login ─────────────────────────────────────
+
+if st.session_state.login_success:
+    st.session_state.login_success = False
+    st.toast("Sesion iniciada correctamente")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PÁGINA 1: TIEMPO REAL
@@ -174,7 +246,7 @@ with st.sidebar:
 if pagina == "Tiempo Real":
     st.title("Monitoreo en Tiempo Real")
     st.caption("Los gráficos se actualizan automáticamente consultando la API y la base de datos.")
-    st.write(f"⏱️ Reloj del sistema: {datetime.now().strftime('%H:%M:%S')}")
+    st.write(f"Reloj del sistema: {datetime.now().strftime('%H:%M:%S')}")
     
     col1, col2, col3, col4 = st.columns(4)
 
@@ -213,20 +285,20 @@ if pagina == "Tiempo Real":
               <div class="metric-value">{value:.2f} <span style="font-size:14px;color:#64748b">{unit}</span></div>
             </div>"""
 
-        col1.markdown(metric_html("⚡ Voltaje", v, "V", v_border), unsafe_allow_html=True)
-        col2.markdown(metric_html("🔌 Corriente", i, "A", i_border), unsafe_allow_html=True)
-        col3.markdown(metric_html("🔥 Potencia", p or 0, "W", p_border), unsafe_allow_html=True)
-        col4.markdown(metric_html("📈 Frecuencia", f or 0, "Hz", f_border), unsafe_allow_html=True)
+        col1.markdown(metric_html("Voltaje", v, "V", v_border), unsafe_allow_html=True)
+        col2.markdown(metric_html("Corriente", i, "A", i_border), unsafe_allow_html=True)
+        col3.markdown(metric_html("Potencia", p or 0, "W", p_border), unsafe_allow_html=True)
+        col4.markdown(metric_html("Frecuencia", f or 0, "Hz", f_border), unsafe_allow_html=True)
 
         st.write("") 
 
         # ── 3. ALERTAS DINÁMICAS (Lógica de Banners) ──
         if es_anomalia_ia:
-            st.error("🚨 **ANOMALÍA CRÍTICA DETECTADA POR IA (Bi-LSTM)** — El modelo predictivo profundo ha identificado una firma temporal de riesgo en el flujo eléctrico.")
+            st.error("**ANOMALIA CRITICA DETECTADA POR IA (Bi-LSTM)** — El modelo predictivo profundo ha identificado una firma temporal de riesgo en el flujo electrico.")
         elif es_anomalia_regla:
-            st.warning("⚠️ **ALERTA DE SEGURIDAD (Umbral Físico)** — Valores fuera de rangos nominales de ingeniería. El motor analítico de respaldo ha asegurado la lectura.")
+            st.warning("**ALERTA DE SEGURIDAD (Umbral Fisico)** — Valores fuera de rangos nominales de ingenieria. El motor analitico de respaldo ha asegurado la lectura.")
         else:
-            st.success("✅ **Operación Eléctrica Normal** — Parámetros estables y completamente validados por el sistema híbrido de monitoreo.")
+            st.success("**Operacion Electrica Normal** — Parametros estables y completamente validados por el sistema hibrido de monitoreo.")
             
     else:
         st.info("No hay datos de telemetría disponibles para este dispositivo en este momento.")
@@ -341,7 +413,7 @@ if pagina == "Tiempo Real":
         )
         st.plotly_chart(fig_gauge, width='stretch')
 
-    st.caption(f"🔄 Actualización automática activa cada {REFRESH_INTERVAL_S}s")
+    st.caption(f"Actualizacion automatica activa cada {REFRESH_INTERVAL_S}s")
     time.sleep(REFRESH_INTERVAL_S)
     st.rerun()
 
@@ -561,9 +633,9 @@ elif pagina == "Incidencias":
             with st.container():
                 c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 1.5, 1])
                 ts = pd.to_datetime(row["fecha_hora"]).strftime("%d/%m/%Y %H:%M:%S")
-                c1.markdown(f"🕐 `{ts}`")
+                c1.markdown(f"`{ts}`")
                 c2.markdown(f"**{row['tipo']}** — {str(row['descripcion'])[:80]}")
-                c3.markdown(f"📟 {row['dispositivo']}")
+                c3.markdown(f"Dispositivo: {row['dispositivo']}")
                 c4.markdown(badge(row["severidad"]), unsafe_allow_html=True)
                 score_val = row["score_anomalia"]
                 score_str = f"{float(score_val):.2f}" if score_val is not None else "—"
@@ -572,7 +644,7 @@ elif pagina == "Incidencias":
 
         csv_data = df_inc.to_csv(index=False).encode("utf-8")
         st.download_button(
-            "⬇️ Descargar incidencias filtradas (.CSV)",
+            "Descargar incidencias filtradas (.CSV)",
             data=csv_data,
             file_name=f"incidencias_{datetime.utcnow().strftime('%Y%m%d')}.csv",
             mime="text/csv",
@@ -621,7 +693,7 @@ elif pagina == "Sistema":
     test_i = tc2.number_input("Corriente Simulada (A)", value=10.0, min_value=0.0, max_value=500.0, step=0.1)
     test_f = tc3.number_input("Frecuencia Simulada (Hz)", value=60.0, min_value=0.0, max_value=200.0, step=0.5)
 
-    if st.button("🔍 Ejecutar Análisis Funcional", type="primary"):
+    if st.button("Ejecutar Analisis Funcional", type="primary"):
         resultado = api_post("/analizar", {
             "voltaje": test_v,
             "corriente": test_i,
@@ -629,9 +701,9 @@ elif pagina == "Sistema":
         })
         if resultado:
             if resultado.get("anomalia"):
-                st.error(f"🚨 **ANOMALÍA CAPTURADA** — Tipo de Evento: `{resultado.get('tipo')}` — Score Neural: `{resultado.get('score', 0):.3f}`")
+                st.error(f"**ANOMALIA CAPTURADA** — Tipo: `{resultado.get('tipo')}` — Score: `{resultado.get('score', 0):.3f}`")
             else:
-                st.success(f"✅ **Muestra Estable** — Comportamiento Eléctrico Seguro — Score Neural: `{resultado.get('score', 0):.3f}`")
+                st.success(f"**Muestra Estable** — Comportamiento Electrico Seguro — Score: `{resultado.get('score', 0):.3f}`")
             with st.expander("Ver metadata cruda de respuesta del backend"):
                 st.json(resultado)
         else:

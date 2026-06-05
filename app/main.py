@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, check_db_connection, engine
-from app.api.endpoints import router
+from app.api.endpoints import router as telemetry_router
+from app.api.auth import router as auth_router
 from app.services.ia_manager import IAManager
 
 # Registro explícito de todos los modelos antes de create_all
@@ -42,24 +43,40 @@ async def lifespan(app: FastAPI):
     """Inicialización y limpieza del ciclo de vida de la aplicación."""
 
     # 1. Inicialización de Base de Datos según el entorno
-    if settings.ENVIRONMENT == "development":
-        print("🗄️  [Dev] Inicializando tablas locales de la base de datos...")
-        Base.metadata.create_all(bind=engine)
-        
-        # Dispositivo de prueba para desarrollo local (ESP32 simula ID 1)
-        from app.models.dispositivo import Dispositivo
-        db = SessionLocal()
-        try:
-            if not db.query(Dispositivo).filter(Dispositivo.id == 1).first():
-                db.add(Dispositivo(id=1, nombre="Sensor_Principal", is_active=True))
-                db.commit()
-                print("✅ Dispositivo de prueba (ID 1) verificado/creado.")
-        except Exception as e:
-            print(f"❌ Error al crear dispositivo de prueba: {e}")
-        finally:
-            db.close()
-    else:
-        print("🗄️  [Prod] Saltando create_all. Se asume que las migraciones corren vía Alembic.")
+    print("🗄️  Inicializando tablas de la base de datos...")
+    Base.metadata.create_all(bind=engine)
+    
+    # Migración automática: agrega columnas nuevas a la tabla usuarios si no existen
+    db = SessionLocal()
+    try:
+        from sqlalchemy import inspect, text as sql_text
+        inspector = inspect(engine)
+        columns = [c["name"] for c in inspector.get_columns("usuarios")]
+        if "username" not in columns:
+            db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN username VARCHAR(80) UNIQUE"))
+            print("✅ Columna 'username' agregada a usuarios.")
+        if "password_hash" not in columns:
+            db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN password_hash VARCHAR(255)"))
+            print("✅ Columna 'password_hash' agregada a usuarios.")
+        db.commit()
+    except Exception as e:
+        print(f"⚠️  Migración automática (opcional): {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+    # Dispositivo por defecto (ID 1) para que exista siempre
+    from app.models.dispositivo import Dispositivo
+    db = SessionLocal()
+    try:
+        if not db.query(Dispositivo).filter(Dispositivo.id == 1).first():
+            db.add(Dispositivo(id=1, nombre="Sensor_Principal", is_active=True))
+            db.commit()
+            print("✅ Dispositivo por defecto (ID 1) creado.")
+    except Exception as e:
+        print(f"❌ Error al crear dispositivo por defecto: {e}")
+    finally:
+        db.close()
 
     # 2. Inicializar motor de IA (Carga del modelo Bidirectional-LSTM)
     print(f"🤖 Cargando motor de IA en modo: {settings.IA_MODE}...")
@@ -92,7 +109,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router)
+app.include_router(telemetry_router)
+app.include_router(auth_router)
 
 
 # ── Dependencias ──────────────────────────────────────────────────────────────

@@ -8,7 +8,9 @@ class Usuario(Base):
     __tablename__ = "usuarios"
 
     id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(80), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
     telegram_id = Column(String(100), unique=True, index=True, nullable=True)
     nombre = Column(String(150), nullable=True)
     is_active = Column(Boolean, default=True)
@@ -21,4 +23,4 @@ class Usuario(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Usuario id={self.id} email={self.email}>"
+        return f"<Usuario id={self.id} username={self.username}>"
