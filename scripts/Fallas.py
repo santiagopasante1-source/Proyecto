@@ -30,11 +30,11 @@ for b in range(num_bloques):
         tipo_falla = rng.choice(['sobretension', 'bajo_voltaje', 'sobrecarga', 'ruido_frecuencia'])
         
         if tipo_falla == 'sobretension':
-            v = rng.normal(195.0, 6.0, tamano_bloque)
+            v = rng.normal(135.0, 3.0, tamano_bloque)   # umbral alto: 130V
             c = rng.normal(8.0, 1.0, tamano_bloque)
             f = rng.normal(60.0, 0.1, tamano_bloque)
         elif tipo_falla == 'bajo_voltaje':
-            v = rng.normal(65.0, 5.0, tamano_bloque)
+            v = rng.normal(105.0, 3.0, tamano_bloque)   # umbral bajo: 110V
             c = rng.normal(3.5, 0.6, tamano_bloque)
             f = rng.normal(60.0, 0.1, tamano_bloque)
         elif tipo_falla == 'sobrecarga':

@@ -37,22 +37,22 @@ def generar_keras_desde_csv():
             f"Asegúrate de que tu dataset esté en la raíz del proyecto."
         )
     
-    print(f" Northampton 📖 Leyendo datos desde: {CSV_PATH}")
+    print(f" Leyendo datos desde: {CSV_PATH}")
     df = pd.read_csv(CSV_PATH)
     
     columnas_necesarias = set(FEATURES + ["anomalia"])
     if not columnas_necesarias.issubset(df.columns):
-        raise ValueError(f"❌ El CSV debe contener las columnas: {columnas_necesarias}")
+        raise ValueError(f"ERROR: El CSV debe contener las columnas: {columnas_necesarias}")
 
     # 2. Preparar muestras
     x_raw = df[FEATURES].values.astype(np.float32)
     y_raw = df["anomalia"].values.astype(np.float32)
     
     X, Y = preparar_secuencias(x_raw, y_raw, SEQUENCE_LENGTH)
-    print(f"📊 Dataset convertido en {len(X)} secuencias de tiempo.")
+    print(f"Dataset convertido en {len(X)} secuencias de tiempo.")
 
     # 3. Arquitectura compacta y ligera
-    print("🤖 Diseñando red neuronal Bidirectional-LSTM compacta...")
+    print("Disenando red neuronal Bidirectional-LSTM compacta...")
     model = tf.keras.Sequential([
         tf.keras.layers.Bidirectional(
             tf.keras.layers.LSTM(32, return_sequences=True), 
@@ -72,7 +72,7 @@ def generar_keras_desde_csv():
     )
 
     # 4. Entrenamiento
-    print("🚀 Entrenando modelo...")
+    print("Entrenando modelo...")
     model.fit(
         X, Y,
         epochs=8,
@@ -84,7 +84,7 @@ def generar_keras_desde_csv():
     # 5. Exportar a la carpeta /models en la raíz
     os.makedirs(os.path.dirname(MODEL_SAVE_PATH), exist_ok=True)
     model.save(MODEL_SAVE_PATH)
-    print(f"\n✅ ¡Éxito total! Archivo .keras generado en: '{MODEL_SAVE_PATH}'")
+    print(f"\nExito total! Archivo .keras generado en: '{MODEL_SAVE_PATH}'")
 
 if __name__ == "__main__":
     generar_keras_desde_csv()
