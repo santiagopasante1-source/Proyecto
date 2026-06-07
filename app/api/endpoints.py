@@ -77,7 +77,7 @@ def ingest_telemetry(
         voltaje=payload.voltaje,
         corriente=payload.corriente,
         potencia=round(payload.voltaje * payload.corriente, 2),
-        frecuencia=payload.frecuencia or 60.0,
+        frecuencia=payload.frecuencia,
         procesado_ia=True
     )
     db.add(telemetria)
@@ -122,7 +122,7 @@ def ingest_telemetry(
     datos_analisis = {
         "voltaje": payload.voltaje, 
         "corriente": payload.corriente, 
-        "frecuencia": payload.frecuencia or 60.0
+        "frecuencia": payload.frecuencia
     }
     ia_resultado = detector.procesar(datos_analisis)
 

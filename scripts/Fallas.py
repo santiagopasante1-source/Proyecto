@@ -23,7 +23,7 @@ for b in range(num_bloques):
         # ── BLOQUE NORMAL (Lecturas consecutivas estables) ──
         v = rng.normal(120.0, 1.2, tamano_bloque)
         c = rng.normal(10.0, 0.8, tamano_bloque)
-        f = rng.normal(60.0, 0.04, tamano_bloque)
+        f = rng.normal(60.0, 0.07, tamano_bloque)  # ±3σ ≈ 59.8-60.2 Hz
         a = np.zeros(tamano_bloque, dtype=int)
     else:
         # ── BLOQUE DE FALLA (El sistema entra en una anomalía sostenida) ──
