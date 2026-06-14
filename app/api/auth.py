@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, decode_access_token
 from app.models.usuario import Usuario
-from app.schemas.usuario import UserLogin, UserResponse, Token
+from app.schemas.usuario import UserLogin, UserResponse, Token, TelegramLink
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -42,6 +42,17 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def me(current_user: Usuario = Depends(get_current_user)):
     return UserResponse.model_validate(current_user)
+
+
+@router.put("/telegram")
+def link_telegram(
+    payload: TelegramLink,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.telegram_id = str(payload.telegram_id)
+    db.commit()
+    return {"ok": True, "telegram_id": payload.telegram_id}
 
 
 

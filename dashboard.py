@@ -90,6 +90,18 @@ def api_post_auth(endpoint: str, payload: dict, timeout: int = 5) -> dict | None
         return None
 
 
+def api_put(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
+    """PUT con token — para actualizar datos del usuario."""
+    token = st.session_state.get("token")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        r = requests.put(f"{API_BASE}{endpoint}", json=payload, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
 # ── Helpers de acceso a datos ─────────────────────────────────────────────────
 
 @st.cache_resource
@@ -747,6 +759,34 @@ elif pagina == "Sistema":
             st.json(ia_status)
         else:
             st.error("Error crítico al recuperar el estado del modelo neuronal.")
+
+    st.divider()
+
+    st.markdown('<div class="section-header">Notificaciones Telegram</div>', unsafe_allow_html=True)
+    st.caption("Vincula tu ID de Telegram para recibir alertas de anomalías en tus dispositivos.")
+
+    col_tg1, col_tg2 = st.columns([3, 1])
+    user = st.session_state.get("user", {})
+    current_tg = user.get("telegram_id", "")
+
+    tg_input = col_tg1.text_input(
+        "ID de Telegram (ej: 1885567115)",
+        value=current_tg if current_tg else "",
+        key="tg_id_input",
+        label_visibility="collapsed",
+        placeholder="Ej: 1885567115",
+    )
+    if col_tg2.button("Guardar", type="primary", use_container_width=True):
+        if tg_input.strip().isdigit():
+            res = api_put("/api/v1/auth/telegram", {"telegram_id": int(tg_input.strip())})
+            if res:
+                st.success("✅ ID de Telegram guardado correctamente")
+                st.session_state.user["telegram_id"] = str(tg_input.strip())
+                st.cache_data.clear()
+            else:
+                st.error("Error al guardar — verifica que el backend esté corriendo")
+        else:
+            st.error("El ID debe ser un número (ej: 1885567115)")
 
     st.divider()
 

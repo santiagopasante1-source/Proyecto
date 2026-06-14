@@ -33,3 +33,7 @@ class Token(BaseModel):
 
 class DeviceAssign(BaseModel):
     dispositivo_id: int = Field(..., gt=0)
+
+
+class TelegramLink(BaseModel):
+    telegram_id: int = Field(..., description="ID numérico de Telegram del usuario")

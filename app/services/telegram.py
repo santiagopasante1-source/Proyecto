@@ -17,11 +17,13 @@ class TelegramService:
         self.DEBOUNCE_SECONDS = 30
 
     async def send_notification(
-        self, mensaje: str, dispositivo_id: int = 0, tipo: str = ""
+        self, mensaje: str, dispositivo_id: int = 0, tipo: str = "", chat_id: str | None = None
     ) -> None:
-        if not self._enabled:
+        target_chat = chat_id or self.chat_id
+
+        if not self._enabled or not target_chat:
             logger.warning(
-                "Telegram no configurado — TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID vacíos"
+                "Telegram no configurado — TELEGRAM_BOT_TOKEN o chat_id vacíos"
             )
             return
 
@@ -44,7 +46,7 @@ class TelegramService:
 
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
         payload = {
-            "chat_id": self.chat_id,
+            "chat_id": target_chat,
             "text": mensaje,
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,

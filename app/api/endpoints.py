@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.models.dispositivo import Dispositivo
 from app.models.incidencia import Incidencia, SeveridadEnum, EstadoEnum
 from app.models.telemetria import Telemetria
+from app.models.usuario import Usuario
 from app.schemas.telemetria import TelemetriaCreate, TelemetriaIAResult, TelemetriaResponse
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,12 @@ def ingest_telemetry(
 
             from app.services.telegram import telegram_service
             dispositivo_nombre = dispositivo.nombre or f"ID {dispositivo.id}"
+
+            chat_id_apagon = None
+            if dispositivo.usuario_id:
+                dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
+                chat_id_apagon = dueño.telegram_id if dueño and dueño.telegram_id else None
+
             background_tasks.add_task(
                 telegram_service.send_notification,
                 (
@@ -150,6 +157,7 @@ def ingest_telemetry(
                 ),
                 dispositivo.id,
                 "APAGON",
+                chat_id_apagon,
             )
             logger.warning("🔴 APAGÓN registrado para dispositivo %s", dispositivo.id)
     elif apagon_abierto:
@@ -212,10 +220,15 @@ def ingest_telemetry(
         # 🚀 DISPARO DE TELEGRAM EN SEGUNDO PLANO (con debounce 30s)
         try:
             from app.services.telegram import telegram_service
-            
+
+            chat_id_ia = None
+            if dispositivo.usuario_id:
+                dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
+                chat_id_ia = dueño.telegram_id if dueño and dueño.telegram_id else None
+
             dispositivo_nombre = dispositivo.nombre or f"ID {dispositivo.id}"
             ubicacion_disp = dispositivo.ubicacion or "No especificada"
-            
+
             mensaje = (
                 f"⚠️ *¡ANOMALÍA ELÉCTRICA DETECTADA!*\n\n"
                 f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
@@ -226,9 +239,9 @@ def ingest_telemetry(
                 f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
             )
             background_tasks.add_task(
-                telegram_service.send_notification, mensaje, dispositivo.id, tipo_ia
+                telegram_service.send_notification, mensaje, dispositivo.id, tipo_ia, chat_id_ia,
             )
-            
+
         except Exception as telegram_err:
             logger.error(f"Error al programar la alerta de Telegram: {telegram_err}")
     else:
