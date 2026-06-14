@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import time
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
 
 import pandas as pd
@@ -283,7 +284,7 @@ if st.session_state.login_success:
 if pagina == "Tiempo Real":
     st.title("Monitoreo en Tiempo Real")
     st.caption("Los gráficos se actualizan automáticamente consultando la API y la base de datos.")
-    st.write(f"Reloj del sistema: {datetime.now().strftime('%H:%M:%S')}")
+    st.write(f"Reloj Venezuela: {datetime.now(ZoneInfo('America/Caracas')).strftime('%H:%M:%S')}")
 
     # ── Estado del dispositivo (conectado / apagón) ──
     dev_status_list = get_device_status(uid)
