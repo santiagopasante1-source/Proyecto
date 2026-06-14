@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text as sql_text
 
 from app.core.config import settings
-from app.core.database import Base, SessionLocal, check_db_connection, engine
+from app.core.database import Base, SessionLocal, check_db_connection, engine, get_db
 from app.api.endpoints import router as telemetry_router
 from app.api.auth import router as auth_router
 from app.services.ia_manager import IAManager
