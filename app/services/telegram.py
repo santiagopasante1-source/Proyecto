@@ -32,14 +32,16 @@ class TelegramService:
         entry = self._debounce.get(key)
 
         if entry is None:
-            self._debounce[key] = {"first_seen": now, "notified": False}
-            return
-
-        if not entry["notified"] and (now - entry["first_seen"]) >= self.DEBOUNCE_SECONDS:
-            entry["notified"] = True
+            self._debounce[key] = {"first_seen": now, "notified": True}
             logger.info(
-                "Enviando notificación Telegram para (%s, %s) tras %.0fs de persistencia",
-                dispositivo_id, tipo, now - entry["first_seen"],
+                "Enviando notificación Telegram para (%s, %s)",
+                dispositivo_id, tipo,
+            )
+        elif entry["notified"] and (now - entry["first_seen"]) >= self.DEBOUNCE_SECONDS:
+            entry["first_seen"] = now
+            logger.info(
+                "Reenviando notificación Telegram para (%s, %s) tras %ds de cooldown",
+                dispositivo_id, tipo, self.DEBOUNCE_SECONDS,
             )
         else:
             return

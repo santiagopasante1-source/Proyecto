@@ -25,7 +25,7 @@ from plotly.subplots import make_subplots
 import requests
 import streamlit as st
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 
 # ── Cargar variables de entorno del archivo .env
 load_dotenv()
@@ -108,11 +108,17 @@ def api_put(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
 @st.cache_resource
 def get_db_engine():
     """Crea el engine de SQLAlchemy para PostgreSQL (cacheado por Streamlit)."""
-    return create_engine(
+    engine = create_engine(
         DB_URL, 
         pool_pre_ping=True, 
         execution_options={"isolation_level": "AUTOCOMMIT"}
     )
+    @event.listens_for(engine, "checkout")
+    def _set_tz(dbapi_connection, connection_record, connection_proxy):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("SET TIME ZONE 'America/Caracas'")
+        cursor.close()
+    return engine
 
 
 def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
@@ -124,6 +130,49 @@ def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
     except Exception as exc:
         st.warning(f"Error de base de datos: {exc}")
         return pd.DataFrame()
+
+
+# ── Helper PDF ────────────────────────────────────────────────────────────────
+
+def _gen_pdf_incidencias(df):
+    """Genera un PDF con tabla de incidencias."""
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Reporte de Incidencias", ln=True, align="C")
+    pdf.ln(5)
+    pdf.set_font("Arial", "", 9)
+    pdf.cell(0, 6, f"Generado: {datetime.now(ZoneInfo('America/Caracas')).strftime('%d/%m/%Y %H:%M')} (Venezuela)", ln=True)
+    pdf.ln(5)
+
+    col_w = [12, 30, 25, 63, 16, 22, 22]
+    headers = ["ID", "Fecha/Hora", "Tipo", "Descripcion", "Severidad", "Estado", "Score"]
+
+    pdf.set_font("Arial", "B", 7)
+    for i, h in enumerate(headers):
+        pdf.cell(col_w[i], 7, h, border=1)
+    pdf.ln()
+
+    pdf.set_font("Arial", "", 7)
+    for _, r in df.iterrows():
+        ts = pd.to_datetime(r["fecha_hora"])
+        if ts.tz is None:
+            ts = ts.replace(tzinfo=ZoneInfo("UTC"))
+        ts_str = ts.astimezone(ZoneInfo("America/Caracas")).strftime("%d/%m/%Y %H:%M")
+        desc = str(r.get("descripcion", ""))[:55]
+        score = f"{float(r['score_anomalia']):.2f}" if r.get("score_anomalia") is not None else "-"
+        row_data = [
+            str(r["id"]), ts_str, str(r["tipo"])[:12], desc,
+            str(r["severidad"])[:8], str(r["estado"])[:10], score,
+        ]
+        for i, v in enumerate(row_data):
+            pdf.cell(col_w[i], 6, v.encode("latin-1", errors="replace").decode("latin-1"), border=1)
+        pdf.ln()
+
+    result = pdf.output(dest="S")
+    return result.encode("latin-1") if isinstance(result, str) else result
 
 
 # ── Helpers cacheados (evitan llamadas repetidas en cada rerun) ───────────────
@@ -710,7 +759,10 @@ elif pagina == "Incidencias":
         for _, row in df_inc.iterrows():
             with st.container():
                 c1, c2, c3, c4, c5 = st.columns([2, 3, 2, 1.5, 1])
-                ts = pd.to_datetime(row["fecha_hora"]).strftime("%d/%m/%Y %H:%M:%S")
+                ts_val = pd.to_datetime(row["fecha_hora"])
+                if ts_val.tz is None:
+                    ts_val = ts_val.replace(tzinfo=ZoneInfo("UTC"))
+                ts = ts_val.astimezone(ZoneInfo("America/Caracas")).strftime("%d/%m/%Y %H:%M:%S")
                 c1.markdown(f"`{ts}`")
                 c2.markdown(f"**{row['tipo']}** — {str(row['descripcion'])[:80]}")
                 c3.markdown(f"Dispositivo: {row['dispositivo']}")
@@ -720,12 +772,12 @@ elif pagina == "Incidencias":
                 c5.markdown(f"score: `{score_str}`")
             st.divider()
 
-        csv_data = df_inc.to_csv(index=False).encode("utf-8")
+        pdf_bytes = _gen_pdf_incidencias(df_inc)
         st.download_button(
-            "Descargar incidencias filtradas (.CSV)",
-            data=csv_data,
-            file_name=f"incidencias_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv",
-            mime="text/csv",
+            "Descargar incidencias filtradas (PDF)",
+            data=pdf_bytes,
+            file_name=f"incidencias_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
         )
 
 # ══════════════════════════════════════════════════════════════════════════════
