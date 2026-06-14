@@ -1,34 +1,4 @@
 Starting Container
-  File "/opt/venv/lib/python3.10/site-packages/uvicorn/importer.py", line 19, in import_from_string
-    run(
-    module = importlib.import_module(module_str)
-  File "/root/.nix-profile/lib/python3.10/importlib/__init__.py", line 126, in import_module
-  File "/opt/venv/lib/python3.10/site-packages/uvicorn/main.py", line 609, in run
-    return _bootstrap._gcd_import(name[level:], package, level)
-    config.load_app()
-  File "/opt/venv/lib/python3.10/site-packages/uvicorn/config.py", line 415, in load_app
-    return import_from_string(self.app)
-Traceback (most recent call last):
-  File "/opt/venv/bin/uvicorn", line 8, in <module>
-    sys.exit(main())
-  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 1524, in __call__
-    return self.main(*args, **kwargs)
-  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 1445, in main
-    rv = self.invoke(ctx)
-  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 1308, in invoke
-    return ctx.invoke(self.callback, **ctx.params)
-  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 877, in invoke
-    return callback(*args, **kwargs)
-  File "/opt/venv/lib/python3.10/site-packages/uvicorn/main.py", line 441, in main
-  File "<frozen importlib._bootstrap>", line 1050, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
-    def devices_status(request: Request, db: Session = Depends(get_db)):
-  File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
-NameError: name 'get_db' is not defined
-  File "<frozen importlib._bootstrap_external>", line 883, in exec_module
-  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
-  File "/app/app/main.py", line 161, in <module>
 Traceback (most recent call last):
   File "/opt/venv/bin/uvicorn", line 8, in <module>
     sys.exit(main())
@@ -58,13 +28,9 @@ Traceback (most recent call last):
   File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
   File "/app/app/main.py", line 161, in <module>
     def devices_status(request: Request, db: Session = Depends(get_db)):
-NameError: name 'get_db' is not defined
-  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
-  File "/app/app/main.py", line 161, in <module>
+NameError: name 'Session' is not defined
 Traceback (most recent call last):
-    def devices_status(request: Request, db: Session = Depends(get_db)):
   File "/opt/venv/bin/uvicorn", line 8, in <module>
-NameError: name 'get_db' is not defined
     sys.exit(main())
   File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 1524, in __call__
     return self.main(*args, **kwargs)
@@ -87,8 +53,42 @@ NameError: name 'get_db' is not defined
   File "<frozen importlib._bootstrap>", line 1050, in _gcd_import
   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+    def devices_status(request: Request, db: Session = Depends(get_db)):
   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
   File "<frozen importlib._bootstrap_external>", line 883, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+NameError: name 'Session' is not defined
+  File "/app/app/main.py", line 161, in <module>
+  File "/opt/venv/lib/python3.10/site-packages/uvicorn/importer.py", line 19, in import_from_string
+Traceback (most recent call last):
+    module = importlib.import_module(module_str)
+  File "/opt/venv/bin/uvicorn", line 8, in <module>
+    sys.exit(main())
+  File "/root/.nix-profile/lib/python3.10/importlib/__init__.py", line 126, in import_module
+  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 1524, in __call__
+    return _bootstrap._gcd_import(name[level:], package, level)
+    return self.main(*args, **kwargs)
+  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 1445, in main
+  File "/opt/venv/lib/python3.10/site-packages/uvicorn/main.py", line 441, in main
+    rv = self.invoke(ctx)
+    run(
+  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 1308, in invoke
+  File "/opt/venv/lib/python3.10/site-packages/uvicorn/main.py", line 609, in run
+    return ctx.invoke(self.callback, **ctx.params)
+    config.load_app()
+  File "/opt/venv/lib/python3.10/site-packages/click/core.py", line 877, in invoke
+  File "/opt/venv/lib/python3.10/site-packages/uvicorn/config.py", line 415, in load_app
+    return callback(*args, **kwargs)
+    return import_from_string(self.app)
+  File "<frozen importlib._bootstrap>", line 1050, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 883, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/app/main.py", line 161, in <module>
+    def devices_status(request: Request, db: Session = Depends(get_db)):
+NameError: name 'Session' is not defined
 Traceback (most recent call last):
   File "/opt/venv/bin/uvicorn", line 8, in <module>
     sys.exit(main())
