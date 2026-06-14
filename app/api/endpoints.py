@@ -136,6 +136,21 @@ def ingest_telemetry(
                 score_anomalia=1.0,
             )
             db.add(incidencia_apagon)
+
+            from app.services.telegram import telegram_service
+            dispositivo_nombre = dispositivo.nombre or f"ID {dispositivo.id}"
+            background_tasks.add_task(
+                telegram_service.send_notification,
+                (
+                    f"⚡🚨 *APAGÓN DETECTADO*\n\n"
+                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
+                    f"📍 *Ubicación:* {dispositivo.ubicacion or 'No especificada'}\n"
+                    f"📊 *Severidad:* CRÍTICA\n"
+                    f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
+                ),
+                dispositivo.id,
+                "APAGON",
+            )
             logger.warning("🔴 APAGÓN registrado para dispositivo %s", dispositivo.id)
     elif apagon_abierto:
         apagon_abierto.estado = EstadoEnum.resuelta
@@ -158,6 +173,9 @@ def ingest_telemetry(
             resolved_at=ahora,
         )
         db.add(incidencia_reest)
+
+        from app.services.telegram import telegram_service
+        telegram_service.clear_debounce(dispositivo.id, "APAGON")
         logger.info("✅ RESTABLECIMIENTO registrado para dispositivo %s", dispositivo.id)
 
     db.commit()
@@ -173,6 +191,7 @@ def ingest_telemetry(
     # 6. Registrar incidencia e hilos de notificación si es anomalía
     if ia_resultado.get("anomalia"):
         score = ia_resultado.get("score", 0.0)
+        tipo_ia = ia_resultado.get("tipo", "ANOMALIA_DETECTADA")
         
         # 🌟 CORRECCIÓN: Actualizamos el flag de la telemetría para que Streamlit pinte el marcador rojo
         telemetria.anomalia_detectada = True
@@ -182,7 +201,7 @@ def ingest_telemetry(
         incidencia = Incidencia(
             dispositivo_id=dispositivo.id,
             telemetria_id=telemetria.id,
-            tipo=ia_resultado.get("tipo", "ANOMALIA_DETECTADA"),
+            tipo=tipo_ia,
             descripcion=ia_resultado.get("mensaje", "Patrón eléctrico irregular"),
             severidad=_score_to_severidad(score),
             score_anomalia=score,
@@ -190,7 +209,7 @@ def ingest_telemetry(
         db.add(incidencia)
         db.commit()  # Guarda tanto la actualización de la telemetría como la incidencia en Neon
 
-        # 🚀 DISPARO DE TELEGRAM EN SEGUNDO PLANO
+        # 🚀 DISPARO DE TELEGRAM EN SEGUNDO PLANO (con debounce 30s)
         try:
             from app.services.telegram import telegram_service
             
@@ -206,11 +225,20 @@ def ingest_telemetry(
                 f"📈 *Score IA:* {score:.4f}\n\n"
                 f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
             )
-            # Agendamos la tarea para que FastAPI la envíe sin retrasar el flujo principal
-            background_tasks.add_task(telegram_service.send_notification, mensaje)
+            background_tasks.add_task(
+                telegram_service.send_notification, mensaje, dispositivo.id, tipo_ia
+            )
             
         except Exception as telegram_err:
             logger.error(f"Error al programar la alerta de Telegram: {telegram_err}")
+    else:
+        # Si vuelve a valores normales, limpiar debounce para reactivar futuras alertas
+        try:
+            from app.services.telegram import telegram_service
+            for t in ["ANOMALIA_LSTM", "ANOMALIA_DETECTADA"]:
+                telegram_service.clear_debounce(dispositivo.id, t)
+        except Exception:
+            pass
 
     # 7. Retorno final estructurado al cliente (Simulador / ESP32)
     return TelemetriaIAResult(
