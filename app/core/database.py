@@ -44,8 +44,8 @@ if IS_SQLITE:
 
 # ── Configurar zona horaria en PostgreSQL (Neon)
 if not IS_SQLITE:
-    @event.listens_for(engine, "connect")
-    def _set_pg_timezone(dbapi_connection, connection_record):
+    @event.listens_for(engine, "checkout")
+    def _set_pg_timezone(dbapi_connection, connection_record, connection_proxy):
         cursor = dbapi_connection.cursor()
         cursor.execute(f"SET TIME ZONE '{settings.TIMEZONE}'")
         cursor.close()
