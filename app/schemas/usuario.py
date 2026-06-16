@@ -37,3 +37,13 @@ class DeviceAssign(BaseModel):
 
 class TelegramLink(BaseModel):
     telegram_id: int = Field(..., description="ID numérico de Telegram del usuario")
+
+
+class ForgotPasswordRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=80)
+
+
+class ResetPasswordRequest(BaseModel):
+    username: str
+    code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=6, max_length=128)

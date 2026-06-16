@@ -1,11 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
 
 from app.core.database import get_db
-from app.core.security import verify_password, create_access_token, decode_access_token
+from app.core.security import (
+    verify_password, create_access_token, decode_access_token,
+    hash_password, generate_reset_code, hash_reset_code,
+)
 from app.models.usuario import Usuario
-from app.schemas.usuario import UserLogin, UserResponse, Token, TelegramLink
+from app.schemas.usuario import (
+    UserLogin, UserResponse, Token, TelegramLink,
+    ForgotPasswordRequest, ResetPasswordRequest,
+)
+from app.services.telegram import telegram_service
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -42,6 +51,78 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def me(current_user: Usuario = Depends(get_current_user)):
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    user = db.query(Usuario).filter(Usuario.username == payload.username).first()
+    if not user or not user.telegram_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado o sin Telegram vinculado",
+        )
+
+    code = generate_reset_code()
+    user.reset_code_hash = hash_reset_code(code)
+    user.reset_code_expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    db.commit()
+
+    mensaje = (
+        f"🔐 *Codigo de recuperacion*\n\n"
+        f"Tu codigo para restablecer la contrasena es:\n\n"
+        f"`{code}`\n\n"
+        f"Vence en 10 minutos. Si no solicitaste esto, ignora este mensaje."
+    )
+    background_tasks.add_task(
+        telegram_service.send_notification,
+        mensaje, 0, "RECUPERACION", user.telegram_id,
+    )
+
+    return {"ok": True, "mensaje": "Si el usuario existe, revisa tu Telegram"}
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(Usuario).filter(Usuario.username == payload.username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if not user.reset_code_hash or not user.reset_code_expires_at:
+        raise HTTPException(status_code=400, detail="No hay codigo de recuperacion pendiente")
+
+    if datetime.now(timezone.utc) > user.reset_code_expires_at:
+        user.reset_code_hash = None
+        user.reset_code_expires_at = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="El codigo ha expirado, solicita uno nuevo")
+
+    if not verify_password(payload.code, user.reset_code_hash):
+        raise HTTPException(status_code=400, detail="Codigo incorrecto")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.reset_code_hash = None
+    user.reset_code_expires_at = None
+    db.commit()
+
+    mensaje = (
+        f"✅ *Contrasena restablecida*\n\n"
+        f"Tu contrasena ha sido cambiada exitosamente."
+    )
+    from app.services.telegram import telegram_service
+    import asyncio
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(
+            telegram_service.send_notification(mensaje, 0, "RECUPERACION", user.telegram_id)
+        )
+        loop.close()
+    except Exception:
+        pass
+
+    return {"ok": True, "mensaje": "Contrasena restablecida exitosamente"}
 
 
 @router.put("/telegram")

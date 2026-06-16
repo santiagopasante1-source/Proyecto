@@ -16,6 +16,8 @@ class Usuario(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    reset_code_hash = Column(String(255), nullable=True)
+    reset_code_expires_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     dispositivos = relationship(

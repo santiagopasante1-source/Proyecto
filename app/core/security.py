@@ -1,3 +1,5 @@
+import random
+import string
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -19,6 +21,14 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+def generate_reset_code() -> str:
+    return "".join(random.choices(string.digits, k=6))
+
+
+def hash_reset_code(code: str) -> str:
+    return pwd_context.hash(code)
 
 
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:

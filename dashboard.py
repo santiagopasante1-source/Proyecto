@@ -240,23 +240,91 @@ if "user" not in st.session_state:
 if "login_success" not in st.session_state:
     st.session_state.login_success = False
 
+# ── Login / Forgot password state ──────────────────────────────────────────────
+
+if "forgot_mode" not in st.session_state:
+    st.session_state.forgot_mode = False
+if "code_sent" not in st.session_state:
+    st.session_state.code_sent = False
+
 # ── Login / Register page ─────────────────────────────────────────────────────
 
 if not st.session_state.token:
     st.title("Inicio de Sesión")
-    with st.form("login_form"):
-        l_user = st.text_input("Usuario")
-        l_pass = st.text_input("Contraseña", type="password")
-        if st.form_submit_button("Ingresar", type="primary"):
-            with st.spinner("Iniciando sesión..."):
-                res = api_post_auth("/api/v1/auth/login", {"username": l_user, "password": l_pass})
-            if res:
-                st.session_state.token = res["access_token"]
-                st.session_state.user = res["user"]
-                st.session_state.login_success = True
-                st.rerun()
-            else:
-                st.error("Credenciales inválidas o backend sin conexión")
+
+    if not st.session_state.forgot_mode:
+        with st.form("login_form"):
+            l_user = st.text_input("Usuario")
+            l_pass = st.text_input("Contraseña", type="password")
+            if st.form_submit_button("Ingresar", type="primary"):
+                with st.spinner("Iniciando sesión..."):
+                    res = api_post_auth("/api/v1/auth/login", {"username": l_user, "password": l_pass})
+                if res:
+                    st.session_state.token = res["access_token"]
+                    st.session_state.user = res["user"]
+                    st.session_state.login_success = True
+                    st.session_state.forgot_mode = False
+                    st.rerun()
+                else:
+                    st.error("Credenciales inválidas o backend sin conexión")
+
+        if st.button("¿Olvidaste tu contraseña?", type="tertiary"):
+            st.session_state.forgot_mode = True
+            st.rerun()
+
+    else:
+        st.markdown("### Recuperar contraseña")
+        st.caption("Ingresa tu usuario para recibir un código en tu Telegram.")
+
+        if not st.session_state.code_sent:
+            fp_user = st.text_input("Usuario", key="fp_user")
+            if st.button("Enviar código a Telegram", type="primary"):
+                if not fp_user:
+                    st.error("Ingresa tu usuario")
+                else:
+                    with st.spinner("Enviando código..."):
+                        res = api_post_auth("/api/v1/auth/forgot-password", {"username": fp_user})
+                    if res:
+                        st.session_state.code_sent = True
+                        st.session_state.fp_username = fp_user
+                        st.rerun()
+                    else:
+                        st.error("No se pudo enviar el código. Verifica que tengas Telegram vinculado.")
+        else:
+            st.success("Si el usuario existe, revisa tu Telegram para el código de 6 dígitos.")
+            fp_code = st.text_input("Código de 6 dígitos", max_chars=6, key="fp_code")
+            fp_new_pass = st.text_input("Nueva contraseña", type="password", key="fp_new_pass")
+            fp_confirm = st.text_input("Confirmar contraseña", type="password", key="fp_confirm")
+
+            cols = st.columns(2)
+            with cols[0]:
+                if st.button("Restablecer", type="primary"):
+                    if not fp_code or not fp_new_pass or not fp_confirm:
+                        st.error("Completa todos los campos")
+                    elif fp_new_pass != fp_confirm:
+                        st.error("Las contraseñas no coinciden")
+                    elif len(fp_new_pass) < 6:
+                        st.error("La contraseña debe tener al menos 6 caracteres")
+                    else:
+                        with st.spinner("Restableciendo..."):
+                            res = api_post_auth("/api/v1/auth/reset-password", {
+                                "username": st.session_state.fp_username,
+                                "code": fp_code,
+                                "new_password": fp_new_pass,
+                            })
+                        if res:
+                            st.session_state.forgot_mode = False
+                            st.session_state.code_sent = False
+                            st.session_state.fp_username = None
+                            st.success("✅ Contraseña restablecida. Ahora puedes iniciar sesión.")
+                            st.rerun()
+                        else:
+                            st.error("Código inválido o expirado. Solicita uno nuevo.")
+            with cols[1]:
+                if st.button("Volver"):
+                    st.session_state.forgot_mode = False
+                    st.session_state.code_sent = False
+                    st.rerun()
 
     st.stop()
 

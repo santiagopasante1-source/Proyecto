@@ -64,6 +64,12 @@ async def lifespan(app: FastAPI):
         if "password_hash" not in columns:
             db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN password_hash VARCHAR(255)"))
             print("✅ Columna 'password_hash' agregada a usuarios.")
+        if "reset_code_hash" not in columns:
+            db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN reset_code_hash VARCHAR(255)"))
+            print("✅ Columna 'reset_code_hash' agregada a usuarios.")
+        if "reset_code_expires_at" not in columns:
+            db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN reset_code_expires_at TIMESTAMP WITH TIME ZONE"))
+            print("✅ Columna 'reset_code_expires_at' agregada a usuarios.")
         db.commit()
     except Exception as e:
         print(f"⚠️  Migración automática (opcional): {e}")
