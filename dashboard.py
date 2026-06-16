@@ -85,10 +85,11 @@ def api_post_auth(endpoint: str, payload: dict, timeout: int = 5) -> dict | None
     """POST sin token — para login/register."""
     try:
         r = requests.post(f"{API_BASE}{endpoint}", json=payload, timeout=timeout)
-        r.raise_for_status()
-        return r.json()
-    except Exception:
-        return None
+        if r.ok:
+            return r.json()
+        return {"error": r.json().get("detail", f"Error {r.status_code}")}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def api_put(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
@@ -259,14 +260,15 @@ if not st.session_state.token:
             if st.form_submit_button("Ingresar", type="primary"):
                 with st.spinner("Iniciando sesión..."):
                     res = api_post_auth("/api/v1/auth/login", {"username": l_user, "password": l_pass})
-                if res:
+                if res and "access_token" in res:
                     st.session_state.token = res["access_token"]
                     st.session_state.user = res["user"]
                     st.session_state.login_success = True
                     st.session_state.forgot_mode = False
                     st.rerun()
                 else:
-                    st.error("Credenciales inválidas o backend sin conexión")
+                    err = res.get("error", "Credenciales inválidas o backend sin conexión") if res else "Backend sin conexión"
+                    st.error(err)
 
         if st.button("¿Olvidaste tu contraseña?", type="tertiary"):
             st.session_state.forgot_mode = True
@@ -284,12 +286,13 @@ if not st.session_state.token:
                 else:
                     with st.spinner("Enviando código..."):
                         res = api_post_auth("/api/v1/auth/forgot-password", {"username": fp_user})
-                    if res:
+                    if res and "error" not in res:
                         st.session_state.code_sent = True
                         st.session_state.fp_username = fp_user
                         st.rerun()
                     else:
-                        st.error("No se pudo enviar el código. Verifica que tengas Telegram vinculado.")
+                        err = res.get("error") if res else "Backend sin conexión"
+                        st.error(err)
         else:
             st.success("Si el usuario existe, revisa tu Telegram para el código de 6 dígitos.")
             fp_code = st.text_input("Código de 6 dígitos", max_chars=6, key="fp_code")
@@ -312,14 +315,14 @@ if not st.session_state.token:
                                 "code": fp_code,
                                 "new_password": fp_new_pass,
                             })
-                        if res:
+                        if res and "error" not in res:
                             st.session_state.forgot_mode = False
                             st.session_state.code_sent = False
-                            st.session_state.fp_username = None
                             st.success("✅ Contraseña restablecida. Ahora puedes iniciar sesión.")
                             st.rerun()
                         else:
-                            st.error("Código inválido o expirado. Solicita uno nuevo.")
+                            err = res.get("error") if res else "Backend sin conexión"
+                            st.error(err)
             with cols[1]:
                 if st.button("Volver"):
                     st.session_state.forgot_mode = False
