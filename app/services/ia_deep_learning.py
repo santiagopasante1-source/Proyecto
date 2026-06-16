@@ -58,7 +58,7 @@ class DeepAnomalyDetector:
     def __init__(
         self,
         sequence_length: int = 10,
-        threshold: float = 0.80,
+        threshold: float = 0.90,
     ) -> None:
         self.sequence_length = sequence_length
         self.features = len(self.FEATURES)

@@ -21,6 +21,8 @@ from app.schemas.telemetria import TelemetriaCreate, TelemetriaIAResult, Telemet
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Telemetría"])
 
+TIPOS_TELEGRAM = {"APAGON", "SOBREVOLTAJE", "BAJO_VOLTAJE"}
+
 def _score_to_severidad(score: float) -> SeveridadEnum:
     """Traduce el score de la IA a niveles de severidad de negocio."""
     if score >= 0.90: 
@@ -31,6 +33,25 @@ def _score_to_severidad(score: float) -> SeveridadEnum:
         return SeveridadEnum.media
     else: 
         return SeveridadEnum.baja
+
+def _clasificar_tipo_anomalia(voltaje: float, frecuencia: float) -> str | None:
+    """Clasifica el tipo de anomalía según reglas de ingeniería.
+    
+    Orden de precedencia:
+    1. APAGON (V < 70)
+    2. SOBREVOLTAJE (V > 134)
+    3. BAJO_VOLTAJE (V < 110)
+    4. FRECUENCIA_ANOMALA (F < 59 o F > 61)
+    """
+    if voltaje < 70:
+        return "APAGON"
+    if voltaje > 134:
+        return "SOBREVOLTAJE"
+    if voltaje < 110:
+        return "BAJO_VOLTAJE"
+    if frecuencia < 59 or frecuencia > 61:
+        return "FRECUENCIA_ANOMALA"
+    return None
 
 @router.post(
     "/telemetry",
@@ -109,20 +130,23 @@ def ingest_telemetry(
     db.commit()
     db.refresh(telemetria)
 
-    # 5. Detectar APAGÓN (V≈0 y I≈0) o RESTABLECIMIENTO (vuelve la luz)
-    UMBRAL_APAGON_V = 5.0
-    UMBRAL_APAGON_I = 0.5
-    es_apagon = (payload.voltaje < UMBRAL_APAGON_V and payload.corriente < UMBRAL_APAGON_I)
+    # 5. Clasificar anomalía por reglas de ingeniería
+    tipo_anomalia = _clasificar_tipo_anomalia(payload.voltaje, payload.frecuencia)
 
-    apagon_abierto = db.query(Incidencia).filter(
-        Incidencia.dispositivo_id == dispositivo.id,
-        Incidencia.tipo == "APAGON",
-        Incidencia.estado == EstadoEnum.abierta,
-    ).first()
-
-    if es_apagon:
+    if tipo_anomalia == "APAGON":
+        # Forzar V=0/I=0 en la telemetría para que el dashboard muestre la caída
+        telemetria.voltaje = 0.0
+        telemetria.corriente = 0.0
+        telemetria.potencia = 0.0
         telemetria.anomalia_detectada = True
         db.add(telemetria)
+
+        apagon_abierto = db.query(Incidencia).filter(
+            Incidencia.dispositivo_id == dispositivo.id,
+            Incidencia.tipo == "APAGON",
+            Incidencia.estado == EstadoEnum.abierta,
+        ).first()
+
         if not apagon_abierto:
             incidencia_apagon = Incidencia(
                 dispositivo_id=dispositivo.id,
@@ -149,63 +173,119 @@ def ingest_telemetry(
             background_tasks.add_task(
                 telegram_service.send_notification,
                 (
-                    f"⚡🚨 *APAGÓN DETECTADO*\n\n"
+                    f"🚨 *APAGON DETECTADO*\n\n"
                     f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
-                    f"📍 *Ubicación:* {dispositivo.ubicacion or 'No especificada'}\n"
-                    f"📊 *Severidad:* CRÍTICA\n"
+                    f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
+                    f"📊 *Severidad:* CRITICA\n"
                     f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
                 ),
                 dispositivo.id,
                 "APAGON",
                 chat_id_apagon,
             )
-            logger.warning("🔴 APAGÓN registrado para dispositivo %s", dispositivo.id)
-    elif apagon_abierto:
-        apagon_abierto.estado = EstadoEnum.resuelta
-        apagon_abierto.resolved_at = ahora
-        apagon_abierto.notas = (
-            f"Reestablecimiento detectado — "
-            f"V={payload.voltaje}V I={payload.corriente}A F={payload.frecuencia or 60.0}Hz"
-        )
-        db.add(apagon_abierto)
-
-        incidencia_reest = Incidencia(
-            dispositivo_id=dispositivo.id,
-            tipo="RESTABLECIMIENTO",
-            descripcion=(
-                f"La energía se restableció en '{dispositivo.nombre or dispositivo.id}'. "
-                f"Voltaje: {payload.voltaje}V, Corriente: {payload.corriente}A"
-            ),
-            severidad=SeveridadEnum.media,
-            estado=EstadoEnum.resuelta,
-            resolved_at=ahora,
-        )
-        db.add(incidencia_reest)
-
-        from app.services.telegram import telegram_service
-        telegram_service.clear_debounce(dispositivo.id, "APAGON")
-        logger.info("✅ RESTABLECIMIENTO registrado para dispositivo %s", dispositivo.id)
-
-    db.commit()
-
-    # 6. Inferencia IA
-    datos_analisis = {
-        "voltaje": payload.voltaje, 
-        "corriente": payload.corriente, 
-        "frecuencia": payload.frecuencia or 60.0
-    }
-    ia_resultado = detector.procesar(datos_analisis)
-
-    # 6. Registrar incidencia e hilos de notificación si es anomalía
-    if ia_resultado.get("anomalia"):
-        score = ia_resultado.get("score", 0.0)
-        tipo_ia = ia_resultado.get("tipo", "ANOMALIA_DETECTADA")
-        
-        # 🌟 CORRECCIÓN: Actualizamos el flag de la telemetría para que Streamlit pinte el marcador rojo
+            logger.warning("APAGON registrado para dispositivo %s", dispositivo.id)
+    elif tipo_anomalia:
         telemetria.anomalia_detectada = True
         db.add(telemetria)
 
-        # Creamos el reporte de la falla en la base de datos
+        severidad = SeveridadEnum.critica if tipo_anomalia in ("SOBREVOLTAJE", "BAJO_VOLTAJE") else SeveridadEnum.alta
+        incidencia = Incidencia(
+            dispositivo_id=dispositivo.id,
+            telemetria_id=telemetria.id,
+            tipo=tipo_anomalia,
+            descripcion=(
+                f"{tipo_anomalia} detectado — V={payload.voltaje}V, I={payload.corriente}A, "
+                f"F={payload.frecuencia or 60.0}Hz"
+            ),
+            severidad=severidad,
+            estado=EstadoEnum.abierta,
+            score_anomalia=1.0,
+        )
+        db.add(incidencia)
+
+        if tipo_anomalia in TIPOS_TELEGRAM:
+            from app.services.telegram import telegram_service
+            dispositivo_nombre = dispositivo.nombre or f"ID {dispositivo.id}"
+            chat_id = None
+            if dispositivo.usuario_id:
+                dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
+                chat_id = dueño.telegram_id if dueño and dueño.telegram_id else None
+            background_tasks.add_task(
+                telegram_service.send_notification,
+                (
+                    f"🚨 *{tipo_anomalia} DETECTADO*\n\n"
+                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
+                    f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
+                    f"📊 *Severidad:* {severidad.value.upper()}\n"
+                    f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
+                ),
+                dispositivo.id,
+                tipo_anomalia,
+                chat_id,
+            )
+
+        logger.warning("%s registrado para dispositivo %s", tipo_anomalia, dispositivo.id)
+    else:
+        # Sin anomalía por reglas — verificar si había APAGON abierto y cerrarlo
+        apagon_abierto = db.query(Incidencia).filter(
+            Incidencia.dispositivo_id == dispositivo.id,
+            Incidencia.tipo == "APAGON",
+            Incidencia.estado == EstadoEnum.abierta,
+        ).first()
+
+        if apagon_abierto:
+            apagon_abierto.estado = EstadoEnum.resuelta
+            apagon_abierto.resolved_at = ahora
+            apagon_abierto.notas = (
+                f"Reestablecimiento detectado — "
+                f"V={payload.voltaje}V I={payload.corriente}A F={payload.frecuencia or 60.0}Hz"
+            )
+            db.add(apagon_abierto)
+
+            incidencia_reest = Incidencia(
+                dispositivo_id=dispositivo.id,
+                tipo="RESTABLECIMIENTO",
+                descripcion=(
+                    f"La energia se restablecio en '{dispositivo.nombre or dispositivo.id}'. "
+                    f"Voltaje: {payload.voltaje}V, Corriente: {payload.corriente}A"
+                ),
+                severidad=SeveridadEnum.media,
+                estado=EstadoEnum.resuelta,
+                resolved_at=ahora,
+            )
+            db.add(incidencia_reest)
+
+            from app.services.telegram import telegram_service
+            telegram_service.clear_debounce(dispositivo.id, "APAGON")
+            logger.info("RESTABLECIMIENTO registrado para dispositivo %s", dispositivo.id)
+
+    db.commit()
+
+    # 6. Inferencia IA (LSTM) solo si no hay anomalía por reglas de ingeniería
+    if not tipo_anomalia:
+        datos_analisis = {
+            "voltaje": payload.voltaje, 
+            "corriente": payload.corriente, 
+            "frecuencia": payload.frecuencia or 60.0
+        }
+        ia_resultado = detector.procesar(datos_analisis)
+    else:
+        ia_resultado = {
+            "anomalia": True,
+            "score": 1.0,
+            "tipo": tipo_anomalia,
+            "confianza": 1.0,
+            "mensaje": f"{tipo_anomalia} detectado por reglas de ingeniería",
+        }
+
+    # 7. Registrar incidencia e hilos de notificación si es anomalía (LSTM)
+    if ia_resultado.get("anomalia") and not tipo_anomalia:
+        score = ia_resultado.get("score", 0.0)
+        tipo_ia = ia_resultado.get("tipo", "ANOMALIA_DETECTADA")
+
+        telemetria.anomalia_detectada = True
+        db.add(telemetria)
+
         incidencia = Incidencia(
             dispositivo_id=dispositivo.id,
             telemetria_id=telemetria.id,
@@ -215,37 +295,38 @@ def ingest_telemetry(
             score_anomalia=score,
         )
         db.add(incidencia)
-        db.commit()  # Guarda tanto la actualización de la telemetría como la incidencia en Neon
+        db.commit()
 
-        # 🚀 DISPARO DE TELEGRAM EN SEGUNDO PLANO (con debounce 30s)
-        try:
-            from app.services.telegram import telegram_service
+        # Telegram solo para tipos permitidos
+        if tipo_ia in TIPOS_TELEGRAM:
+            try:
+                from app.services.telegram import telegram_service
 
-            chat_id_ia = None
-            if dispositivo.usuario_id:
-                dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
-                chat_id_ia = dueño.telegram_id if dueño and dueño.telegram_id else None
+                chat_id_ia = None
+                if dispositivo.usuario_id:
+                    dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
+                    chat_id_ia = dueño.telegram_id if dueño and dueño.telegram_id else None
 
-            dispositivo_nombre = dispositivo.nombre or f"ID {dispositivo.id}"
-            ubicacion_disp = dispositivo.ubicacion or "No especificada"
+                dispositivo_nombre = dispositivo.nombre or f"ID {dispositivo.id}"
+                ubicacion_disp = dispositivo.ubicacion or "No especificada"
 
-            mensaje = (
-                f"⚠️ *¡ANOMALÍA ELÉCTRICA DETECTADA!*\n\n"
-                f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
-                f"📍 *Ubicación:* {ubicacion_disp}\n"
-                f"🚨 *Tipo:* {incidencia.tipo}\n"
-                f"📊 *Severidad:* {incidencia.severidad.value.upper()}\n"
-                f"📈 *Score IA:* {score:.4f}\n\n"
-                f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
-            )
-            background_tasks.add_task(
-                telegram_service.send_notification, mensaje, dispositivo.id, tipo_ia, chat_id_ia,
-            )
+                mensaje = (
+                    f"🚨 *ANOMALIA ELECTRICA DETECTADA*\n\n"
+                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
+                    f"📍 *Ubicacion:* {ubicacion_disp}\n"
+                    f"🚨 *Tipo:* {incidencia.tipo}\n"
+                    f"📊 *Severidad:* {incidencia.severidad.value.upper()}\n"
+                    f"📈 *Score IA:* {score:.4f}\n\n"
+                    f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
+                )
+                background_tasks.add_task(
+                    telegram_service.send_notification, mensaje, dispositivo.id, tipo_ia, chat_id_ia,
+                )
 
-        except Exception as telegram_err:
-            logger.error(f"Error al programar la alerta de Telegram: {telegram_err}")
-    else:
-        # Si vuelve a valores normales, limpiar debounce para reactivar futuras alertas
+            except Exception as telegram_err:
+                logger.error(f"Error al programar la alerta de Telegram: {telegram_err}")
+    elif not tipo_anomalia:
+        # Sin anomalía — limpiar debounce LSTM
         try:
             from app.services.telegram import telegram_service
             for t in ["ANOMALIA_LSTM", "ANOMALIA_DETECTADA"]:

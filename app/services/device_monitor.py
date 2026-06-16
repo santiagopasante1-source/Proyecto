@@ -3,13 +3,15 @@ import threading
 import time
 from datetime import datetime, timezone, timedelta
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dispositivo import Dispositivo
 from app.models.incidencia import Incidencia, SeveridadEnum, EstadoEnum
+from app.models.telemetria import Telemetria
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_SECONDS = 10
+TIMEOUT_SECONDS = settings.OFFLINE_TIMEOUT_SECONDS
 CHECK_INTERVAL = 10
 
 
@@ -78,8 +80,22 @@ class DeviceMonitor:
                     db.add(desc_abierta)
 
                 if not apagon_abierto and not desc_abierta:
+                    # Insertar telemetría con V=0/I=0 para que el dashboard muestre la caída
+                    telemetria_apagon = Telemetria(
+                        dispositivo_id=device.id,
+                        voltaje=0.0,
+                        corriente=0.0,
+                        potencia=0.0,
+                        frecuencia=0.0,
+                        anomalia_detectada=True,
+                        procesado_ia=True,
+                    )
+                    db.add(telemetria_apagon)
+                    db.flush()
+
                     incidencia = Incidencia(
                         dispositivo_id=device.id,
+                        telemetria_id=telemetria_apagon.id,
                         tipo="APAGON",
                         descripcion=(
                             f"Corte de energía — El dispositivo '{device.nombre or device.id}' "
@@ -91,7 +107,7 @@ class DeviceMonitor:
                     )
                     db.add(incidencia)
                     db.commit()
-                    logger.warning("🔴 APAGÓN creado para dispositivo %s", device.id)
+                    logger.warning("APAGON creado para dispositivo %s (V=0/I=0 insertado)", device.id)
                 else:
                     db.commit()
         finally:

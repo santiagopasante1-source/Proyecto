@@ -37,7 +37,7 @@ def generar_keras_desde_csv():
             f"Asegúrate de que tu dataset esté en la raíz del proyecto."
         )
     
-    print(f" Northampton 📖 Leyendo datos desde: {CSV_PATH}")
+    print(f"Leyendo datos desde: {CSV_PATH}")
     df = pd.read_csv(CSV_PATH)
     
     columnas_necesarias = set(FEATURES + ["anomalia"])
@@ -49,10 +49,10 @@ def generar_keras_desde_csv():
     y_raw = df["anomalia"].values.astype(np.float32)
     
     X, Y = preparar_secuencias(x_raw, y_raw, SEQUENCE_LENGTH)
-    print(f"📊 Dataset convertido en {len(X)} secuencias de tiempo.")
+    print(f"Dataset convertido en {len(X)} secuencias de tiempo.")
 
     # 3. Arquitectura compacta y ligera
-    print("🤖 Diseñando red neuronal Bidirectional-LSTM compacta...")
+    print("Disenando red neuronal Bidirectional-LSTM compacta...")
     model = tf.keras.Sequential([
         tf.keras.layers.Bidirectional(
             tf.keras.layers.LSTM(32, return_sequences=True), 
@@ -72,7 +72,7 @@ def generar_keras_desde_csv():
     )
 
     # 4. Entrenamiento
-    print("🚀 Entrenando modelo...")
+    print("Entrenando modelo...")
     model.fit(
         X, Y,
         epochs=8,

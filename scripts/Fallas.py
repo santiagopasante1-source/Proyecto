@@ -27,7 +27,7 @@ for b in range(num_bloques):
         a = np.zeros(tamano_bloque, dtype=int)
     else:
         # ── BLOQUE DE FALLA (El sistema entra en una anomalía sostenida) ──
-        tipo_falla = rng.choice(['sobretension', 'bajo_voltaje', 'sobrecarga', 'ruido_frecuencia'])
+        tipo_falla = rng.choice(['sobretension', 'bajo_voltaje', 'sobrecarga', 'ruido_frecuencia', 'apagon'])
         
         if tipo_falla == 'sobretension':
             v = rng.normal(195.0, 6.0, tamano_bloque)
@@ -41,6 +41,10 @@ for b in range(num_bloques):
             v = rng.normal(116.0, 2.0, tamano_bloque)
             c = rng.normal(78.0, 5.0, tamano_bloque)
             f = rng.normal(60.0, 0.1, tamano_bloque)
+        elif tipo_falla == 'apagon':
+            v = rng.normal(1.5, 0.8, tamano_bloque)
+            c = rng.normal(0.15, 0.1, tamano_bloque)
+            f = rng.normal(0.0, 0.5, tamano_bloque)
         else:  # ruido_frecuencia
             v = rng.normal(120.0, 1.5, tamano_bloque)
             c = rng.normal(10.0, 0.8, tamano_bloque)

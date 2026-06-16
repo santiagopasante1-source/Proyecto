@@ -172,7 +172,7 @@ def _gen_pdf_incidencias(df):
         pdf.ln()
 
     result = pdf.output(dest="S")
-    return result.encode("latin-1") if isinstance(result, str) else result
+    return bytes(result)
 
 
 # ── Helpers cacheados (evitan llamadas repetidas en cada rerun) ───────────────

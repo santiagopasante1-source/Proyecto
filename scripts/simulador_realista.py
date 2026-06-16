@@ -23,7 +23,8 @@ FRECUENCIA_NOMINAL = 60.0
 
 # Tipos de anomalía con probabilidades
 ANOMALY_TYPES = {
-    "normal":          0.82,   # Operación normal
+    "normal":          0.80,   # Operación normal
+    "apagon":          0.02,   # Corte total — V~[0-3V], I~[0-0.3A]
     "microcorte":      0.03,   # Voltaje cae < 80 V por < 1 ciclo
     "sobrevoltaje":    0.04,   # V > 253 V (norma IEC)
     "bajo_voltaje":    0.04,   # V < 108 V (fuera de rango ANSI)
@@ -52,7 +53,11 @@ def generate_sample(t: float, anomaly_type: str) -> dict:
     i = CORRIENTE_NOMINAL + noise_i
     f = FRECUENCIA_NOMINAL + drift_f
 
-    if anomaly_type == "microcorte":
+    if anomaly_type == "apagon":
+        v = random.uniform(0, 3)
+        i = random.uniform(0, 0.3)
+        f = random.uniform(0, 2)
+    elif anomaly_type == "microcorte":
         v = random.uniform(50, 85)
     elif anomaly_type == "sobrevoltaje":
         v = random.uniform(255, 290)

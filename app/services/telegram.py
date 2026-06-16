@@ -14,7 +14,7 @@ class TelegramService:
         self.chat_id = settings.TELEGRAM_CHAT_ID
         self._enabled = bool(self.token and self.chat_id)
         self._debounce: dict[tuple[int, str], dict] = {}
-        self.DEBOUNCE_SECONDS = 30
+        self.DEBOUNCE_SECONDS = 300
 
     async def send_notification(
         self, mensaje: str, dispositivo_id: int = 0, tipo: str = "", chat_id: str | None = None
