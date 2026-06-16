@@ -392,7 +392,7 @@ if pagina == "Tiempo Real":
         v, i, p, f = row["voltaje"], row["corriente"], row["potencia"], row.get("frecuencia", 0)
         
         # ── 1. REGLAS DE INGENIERÍA ──
-        voltaje_fuera = (v < 110.0 or v > 134.0)
+        voltaje_fuera = (v < 114.0 or v > 134.0)
         frecuencia_fuera = (f < 59.0 or f > 61.0) if f > 0 else False
         corriente_fuera = (i > 50.0)
         

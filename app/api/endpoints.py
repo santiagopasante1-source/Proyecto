@@ -47,7 +47,7 @@ def _clasificar_tipo_anomalia(voltaje: float, frecuencia: float) -> str | None:
         return "APAGON"
     if voltaje > 134:
         return "SOBREVOLTAJE"
-    if voltaje < 110:
+    if voltaje < 114:
         return "BAJO_VOLTAJE"
     if frecuencia < 59 or frecuencia > 61:
         return "FRECUENCIA_ANOMALA"

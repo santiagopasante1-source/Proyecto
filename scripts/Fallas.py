@@ -1,63 +1,63 @@
 import pandas as pd
 import numpy as np
 
-# Configurar generador aleatorio para reproducibilidad académica
 rng = np.random.default_rng(42)
 
 total_filas = 20000
-tamano_bloque = 100  # Cada bloque representa una ventana temporal continua de 100 lecturas
-num_bloques = total_filas // tamano_bloque  # 60 bloques en total
 
 voltajes = []
 corrientes = []
 frecuencias = []
 anomalias = []
 
-print(f"Generando {total_filas} registros estructurados en {num_bloques} bloques temporales continuos...")
+print(f"Generando {total_filas} registros con rangos reales ESP32...")
 
-for b in range(num_bloques):
-    # Alternamos de forma balanceada: bloques pares son estables, impares son fallas (50% / 50%)
-    es_falla = (b % 2 != 0)
-    
-    if not es_falla:
-        # ── BLOQUE NORMAL (Lecturas consecutivas estables) ──
-        v = rng.normal(120.0, 1.2, tamano_bloque)
-        c = rng.normal(10.0, 0.8, tamano_bloque)
-        f = rng.normal(60.0, 0.04, tamano_bloque)
-        a = np.zeros(tamano_bloque, dtype=int)
+generated = 0
+block_idx = 0
+while generated < total_filas:
+    es_anomalia = (block_idx % 2 != 0)
+
+    if es_anomalia:
+        tamano = min(rng.integers(8, 13), total_filas - generated)
+        tipo = rng.choice(['sobrevoltaje', 'bajo_voltaje', 'frecuencia_baja', 'frecuencia_alta', 'apagon'])
+
+        if tipo == 'sobrevoltaje':
+            v = rng.uniform(135, 150, tamano)
+            c = rng.uniform(10, 80, tamano)
+            f = rng.normal(60, 0.3, tamano)
+        elif tipo == 'bajo_voltaje':
+            v = rng.uniform(100, 113, tamano)
+            c = rng.uniform(10, 80, tamano)
+            f = rng.normal(60, 0.3, tamano)
+        elif tipo == 'frecuencia_baja':
+            v = rng.normal(120, 2, tamano)
+            c = rng.uniform(10, 80, tamano)
+            f = rng.uniform(57, 58.9, tamano)
+        elif tipo == 'frecuencia_alta':
+            v = rng.normal(120, 2, tamano)
+            c = rng.uniform(10, 80, tamano)
+            f = rng.uniform(61.1, 63, tamano)
+        else:  # apagon
+            v = rng.normal(0, 1, tamano)
+            c = rng.normal(0, 1, tamano)
+            f = rng.normal(0, 1, tamano)
+
+        a = np.ones(tamano, dtype=int)
     else:
-        # ── BLOQUE DE FALLA (El sistema entra en una anomalía sostenida) ──
-        tipo_falla = rng.choice(['sobretension', 'bajo_voltaje', 'sobrecarga', 'ruido_frecuencia', 'apagon'])
-        
-        if tipo_falla == 'sobretension':
-            v = rng.normal(195.0, 6.0, tamano_bloque)
-            c = rng.normal(8.0, 1.0, tamano_bloque)
-            f = rng.normal(60.0, 0.1, tamano_bloque)
-        elif tipo_falla == 'bajo_voltaje':
-            v = rng.normal(65.0, 5.0, tamano_bloque)
-            c = rng.normal(3.5, 0.6, tamano_bloque)
-            f = rng.normal(60.0, 0.1, tamano_bloque)
-        elif tipo_falla == 'sobrecarga':
-            v = rng.normal(116.0, 2.0, tamano_bloque)
-            c = rng.normal(78.0, 5.0, tamano_bloque)
-            f = rng.normal(60.0, 0.1, tamano_bloque)
-        elif tipo_falla == 'apagon':
-            v = rng.normal(1.5, 0.8, tamano_bloque)
-            c = rng.normal(0.15, 0.1, tamano_bloque)
-            f = rng.normal(0.0, 0.5, tamano_bloque)
-        else:  # ruido_frecuencia
-            v = rng.normal(120.0, 1.5, tamano_bloque)
-            c = rng.normal(10.0, 0.8, tamano_bloque)
-            f = rng.normal(68.5, 1.8, tamano_bloque)
-            
-        a = np.ones(tamano_bloque, dtype=int)
-        
+        tamano = min(rng.integers(10, 16), total_filas - generated)
+        v = rng.normal(120, 2, tamano)
+        c = rng.uniform(10, 80, tamano)
+        f = rng.normal(60, 0.3, tamano)
+        a = np.zeros(tamano, dtype=int)
+
     voltajes.extend(v)
     corrientes.extend(c)
     frecuencias.extend(f)
     anomalias.extend(a)
 
-# Construir el DataFrame conservando el orden de los bloques temporales
+    generated += tamano
+    block_idx += 1
+
 df_final = pd.DataFrame({
     'voltaje': np.round(voltajes, 2),
     'corriente': np.round(corrientes, 2),
@@ -65,11 +65,9 @@ df_final = pd.DataFrame({
     'anomalia': anomalias
 })
 
-# Guardar el archivo en la raíz del proyecto
 df_final.to_csv('dataset_entrenamiento.csv', index=False)
 
-print("\n========================================================")
-print("¡NUEVO DATASET CRONOLÓGICO GENERADO CON ÉXITO!")
-print("Archivo guardado como: dataset_entrenamiento.csv")
-print(f"Total registros: {len(df_final)} (10000 Normales / 10000 Fallas en continuidad)")
-print("========================================================")
+normales = (df_final['anomalia'] == 0).sum()
+fallas = (df_final['anomalia'] == 1).sum()
+print(f"\nDataset generado: {len(df_final)} registros ({normales} normales / {fallas} anomalias)")
+print("Guardado como: dataset_entrenamiento.csv")
