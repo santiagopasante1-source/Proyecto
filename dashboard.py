@@ -7,6 +7,7 @@ Ejecutar con:   streamlit run dashboard.py
 Páginas:
    Tiempo Real    — Gráfico unificado de oscilación (V/I) en vivo y métricas híbridas
    Histórico      — Comportamiento por día/semana/mes desde la BD PostgreSQL (Neon)
+   Consumo        — Consumo energético (kWh) diario y horario con proyecciones
    Incidencias    — Registro de eventos anómalos con nivel de criticidad
    Sistema        — Estado de salud del backend y del motor de IA (Bi-LSTM)
 """
@@ -171,6 +172,106 @@ def _gen_pdf_incidencias(df):
         for i, v in enumerate(row_data):
             pdf.cell(col_w[i], 6, v.encode("latin-1", errors="replace").decode("latin-1"), border=1)
         pdf.ln()
+
+    result = pdf.output(dest="S")
+    return bytes(result)
+
+
+# ── Helpers de consumo energético (kWh) ─────────────────────────────────────
+
+def compute_kwh_daily(dispositivo_id: int, dias: int) -> pd.DataFrame:
+    """Consumo kWh por día integrando potencia trapezoidal entre lecturas."""
+    fecha_inicio = (datetime.now(ZoneInfo("America/Caracas")) - timedelta(days=dias)).isoformat()
+    sql = """
+        WITH base AS (
+            SELECT timestamp, potencia,
+                   LAG(timestamp) OVER (ORDER BY timestamp) as prev_ts,
+                   LAG(potencia) OVER (ORDER BY timestamp) as prev_p
+            FROM telemetrias
+            WHERE dispositivo_id = :id
+              AND timestamp >= :fecha_inicio
+              AND potencia IS NOT NULL
+        )
+        SELECT
+            DATE(timestamp) as fecha,
+            ROUND(SUM(
+                CASE
+                    WHEN prev_ts IS NOT NULL AND prev_p IS NOT NULL
+                    THEN ((prev_p + potencia) / 2.0) *
+                         EXTRACT(EPOCH FROM (timestamp - prev_ts)) / 3600.0 / 1000.0
+                    ELSE 0
+                END
+            )::numeric, 3) as kwh
+        FROM base
+        GROUP BY DATE(timestamp)
+        ORDER BY fecha
+    """
+    return query_df(sql, params={"id": dispositivo_id, "fecha_inicio": fecha_inicio})
+
+
+def compute_kwh_hourly(dispositivo_id: int) -> pd.DataFrame:
+    """Consumo kWh por hora (hoy) integrando potencia trapezoidal."""
+    sql = """
+        WITH base AS (
+            SELECT timestamp, potencia,
+                   LAG(timestamp) OVER (ORDER BY timestamp) as prev_ts,
+                   LAG(potencia) OVER (ORDER BY timestamp) as prev_p
+            FROM telemetrias
+            WHERE dispositivo_id = :id
+              AND timestamp >= CURRENT_DATE
+              AND potencia IS NOT NULL
+        )
+        SELECT
+            EXTRACT(HOUR FROM timestamp)::int as hora,
+            ROUND(SUM(
+                CASE
+                    WHEN prev_ts IS NOT NULL AND prev_p IS NOT NULL
+                    THEN ((prev_p + potencia) / 2.0) *
+                         EXTRACT(EPOCH FROM (timestamp - prev_ts)) / 3600.0 / 1000.0
+                    ELSE 0
+                END
+            )::numeric, 4) as kwh
+        FROM base
+        GROUP BY EXTRACT(HOUR FROM timestamp)
+        ORDER BY hora
+    """
+    return query_df(sql, params={"id": dispositivo_id})
+
+
+def _gen_pdf_consumo(df_kwh: pd.DataFrame, total_kwh: float, periodo: str) -> bytes:
+    """Genera PDF con tabla de consumo energético diario."""
+    from fpdf import FPDF
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, "Reporte de Consumo Energetico", ln=True, align="C")
+    pdf.ln(5)
+    pdf.set_font("Arial", "", 9)
+    pdf.cell(0, 6, f"Generado: {datetime.now(ZoneInfo('America/Caracas')).strftime('%d/%m/%Y %H:%M')} (Venezuela)", ln=True)
+    pdf.cell(0, 6, f"Periodo: {periodo}", ln=True)
+    pdf.cell(0, 6, f"Total: {total_kwh:.3f} kWh", ln=True)
+    pdf.ln(5)
+
+    col_w = [30, 30]
+    headers = ["Fecha", "kWh"]
+    pdf.set_font("Arial", "B", 10)
+    for i, h in enumerate(headers):
+        pdf.cell(col_w[i], 7, h, border=1)
+    pdf.ln()
+
+    pdf.set_font("Arial", "", 10)
+    for _, r in df_kwh.iterrows():
+        fecha = str(r["fecha"])
+        kwh = f"{r['kwh']:.3f}"
+        pdf.cell(col_w[0], 6, fecha, border=1)
+        pdf.cell(col_w[1], 6, kwh, border=1)
+        pdf.ln()
+
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(col_w[0], 7, "Promedio diario", border=1)
+    avg_kwh = df_kwh["kwh"].mean() if not df_kwh.empty else 0
+    pdf.cell(col_w[1], 7, f"{avg_kwh:.3f} kWh", border=1)
 
     result = pdf.output(dest="S")
     return bytes(result)
@@ -346,7 +447,7 @@ with st.sidebar:
 
     pagina = st.radio(
         "Navegación",
-        ["Tiempo Real", "Histórico", "Incidencias", "Sistema"],
+        ["Tiempo Real", "Histórico", "Consumo", "Incidencias", "Sistema"],
         label_visibility="collapsed",
     )
     st.divider()
@@ -749,7 +850,101 @@ elif pagina == "Histórico":
         )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PÁGINA 3: INCIDENCIAS
+# PÁGINA 3: CONSUMO
+# ══════════════════════════════════════════════════════════════════════════════
+
+elif pagina == "Consumo":
+    st.title("Consumo Energético (kWh)")
+    st.caption("Integración trapezoidal de potencia eléctrica para energía acumulada.")
+
+    df_daily = compute_kwh_daily(dispositivo_id, 30)
+    today = datetime.now(ZoneInfo("America/Caracas")).date()
+
+    if df_daily.empty:
+        st.info("No hay suficientes datos de telemetría para calcular consumo.")
+    else:
+        # ── KPIs ──
+        kwh_hoy = df_daily.loc[df_daily["fecha"] == today, "kwh"].sum()
+        semana_start = today - timedelta(days=7)
+        kwh_semana = df_daily.loc[df_daily["fecha"] >= semana_start, "kwh"].sum()
+        kwh_mes = df_daily["kwh"].sum()
+
+        hora_actual = datetime.now(ZoneInfo("America/Caracas")).hour
+        minuto_actual = datetime.now(ZoneInfo("America/Caracas")).minute
+        hora_decimal = hora_actual + minuto_actual / 60.0
+        proyeccion = (kwh_hoy / hora_decimal * 24 * 30) if hora_decimal > 0 and kwh_hoy > 0 else 0
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("kWh Hoy", f"{kwh_hoy:.3f}")
+        k2.metric("kWh Última Semana", f"{kwh_semana:.3f}")
+        k3.metric("kWh Últimos 30 Días", f"{kwh_mes:.3f}")
+        k4.metric("Proyección Mensual", f"{proyeccion:.3f}")
+
+        st.divider()
+
+        # ── Selector de período para la gráfica ──
+        periodo_consumo = st.radio(
+            "Período de visualización",
+            ["Hoy", "Última semana", "Último mes"],
+            horizontal=True,
+            key="consumo_periodo",
+        )
+        dias_consumo = {"Hoy": 1, "Última semana": 7, "Último mes": 30}[periodo_consumo]
+        fecha_corte = today - timedelta(days=dias_consumo - 1)
+        df_display = df_daily[df_daily["fecha"] >= fecha_corte]
+
+        # ── Gráfica 1: Consumo diario ──
+        st.markdown('<div class="section-header">Consumo diario (kWh)</div>', unsafe_allow_html=True)
+        if not df_display.empty:
+            fig_daily = px.bar(
+                df_display, x="fecha", y="kwh",
+                labels={"fecha": "", "kwh": "kWh"},
+                color="kwh", color_continuous_scale="Viridis",
+            )
+            fig_daily.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font_color="#94a3b8", height=280, margin=dict(l=0, r=0, t=10, b=0),
+                coloraxis_showscale=False,
+                xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1e293b"),
+            )
+            st.plotly_chart(fig_daily, width='stretch')
+        else:
+            st.info("No hay datos para el período seleccionado.")
+
+        # ── Gráfica 2: Perfil horario (hoy) ──
+        st.markdown('<div class="section-header">Perfil horario de consumo (hoy)</div>', unsafe_allow_html=True)
+        df_hourly = compute_kwh_hourly(dispositivo_id)
+        if not df_hourly.empty:
+            fig_hourly = px.bar(
+                df_hourly, x="hora", y="kwh",
+                labels={"hora": "Hora", "kwh": "kWh"},
+                color="kwh", color_continuous_scale="Viridis",
+            )
+            fig_hourly.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font_color="#94a3b8", height=280, margin=dict(l=0, r=0, t=10, b=0),
+                coloraxis_showscale=False,
+                xaxis=dict(dtick=1, showgrid=False), yaxis=dict(gridcolor="#1e293b"),
+            )
+            st.plotly_chart(fig_hourly, width='stretch')
+        else:
+            st.info("No hay datos horarios disponibles para hoy.")
+
+        st.divider()
+
+        # ── PDF ──
+        periodo_label = {"Hoy": "Hoy", "Última semana": "Semana", "Último mes": "Mes"}[periodo_consumo]
+        total_display = df_display["kwh"].sum()
+        pdf_bytes = _gen_pdf_consumo(df_display, total_display, periodo_label)
+        st.download_button(
+            "Descargar reporte de consumo (PDF)",
+            data=pdf_bytes,
+            file_name=f"consumo_{datetime.now(ZoneInfo('America/Caracas')).strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+        )
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PÁGINA 4: INCIDENCIAS
 # ══════════════════════════════════════════════════════════════════════════════
 
 elif pagina == "Incidencias":
@@ -856,7 +1051,7 @@ elif pagina == "Incidencias":
         )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PÁGINA 4: SISTEMA
+# PÁGINA 5: SISTEMA
 # ══════════════════════════════════════════════════════════════════════════════
 
 elif pagina == "Sistema":
