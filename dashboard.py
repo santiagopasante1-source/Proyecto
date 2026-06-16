@@ -445,6 +445,10 @@ if pagina == "Tiempo Real":
     
     if not df_rt.empty:
         df_rt = df_rt.sort_values("timestamp")
+        df_rt["timestamp"] = pd.to_datetime(df_rt["timestamp"])
+        if df_rt["timestamp"].dt.tz is None:
+            df_rt["timestamp"] = df_rt["timestamp"].dt.tz_localize("UTC")
+        df_rt["timestamp"] = df_rt["timestamp"].dt.tz_convert("America/Caracas")
         
         # Crear figura con doble eje Y
         fig_combined = make_subplots(specs=[[{"secondary_y": True}]])
@@ -557,7 +561,7 @@ elif pagina == "Histórico":
         horizontal=True,
     )
     dias = {"Hoy": 1, "Última semana": 7, "Último mes": 30}[rango]
-    fecha_inicio = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+    fecha_inicio = (datetime.now(ZoneInfo("America/Caracas")) - timedelta(days=dias)).isoformat()
 
     sql_historico = """
         SELECT
