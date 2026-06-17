@@ -15,6 +15,7 @@ from typing import Dict, Any
 
 from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
@@ -231,7 +232,6 @@ async def analizar_datos(
     Pasa estos datos directamente al modelo Bidirectional-LSTM para detectar anomalías.
     """
     try:
-        # datos.model_dump() convierte el esquema Pydantic a un diccionario estándar de Python
         resultado = manager.process_data(datos.model_dump())
         return resultado
     except Exception as e:
@@ -239,3 +239,182 @@ async def analizar_datos(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error interno durante el procesamiento del modelo: {str(e)}"
         )
+
+
+# ── Endpoints para Setup Web ──────────────────────────────────────────────────
+
+@app.get("/api/v1/devices", tags=["Dispositivos"])
+def list_devices(db: Session = Depends(get_db)):
+    """Lista todos los dispositivos activos con su usuario asignado."""
+    from app.models.dispositivo import Dispositivo
+    dispositivos = db.query(Dispositivo).filter(Dispositivo.is_active == True).all()
+    return {
+        "dispositivos": [
+            {
+                "id": d.id,
+                "nombre": d.nombre or f"Dispositivo {d.id}",
+                "ubicacion": d.ubicacion,
+                "usuario_id": d.usuario_id,
+            }
+            for d in dispositivos
+        ]
+    }
+
+
+SETUP_HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup - Asignar Dispositivo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 40px 20px; }
+  .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); padding: 32px; max-width: 480px; width: 100%; }
+  h1 { font-size: 22px; color: #1a1a2e; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #333; margin: 12px 0 4px; }
+  input, select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+  input:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+  button { width: 100%; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+  button:hover { background: #1d4ed8; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .msg { padding: 10px 14px; border-radius: 8px; margin-top: 16px; font-size: 14px; display: none; }
+  .success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; display: block; }
+  .error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; display: block; }
+  .info { background: #e0f2fe; color: #075985; border: 1px solid #bae6fd; display: block; }
+  .step { border-top: 1px solid #e5e7eb; margin-top: 20px; padding-top: 20px; }
+  .step-num { display: inline-block; width: 24px; height: 24px; background: #2563eb; color: #fff; border-radius: 50%; text-align: center; line-height: 24px; font-size: 13px; font-weight: 700; margin-right: 8px; }
+  .step-title { font-weight: 600; color: #1a1a2e; font-size: 15px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge-free { background: #dbeafe; color: #1e40af; }
+  .badge-owned { background: #d1fae5; color: #065f46; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔧 Configuración</h1>
+  <p class="subtitle">Asigna un dispositivo a tu cuenta para recibir notificaciones</p>
+
+  <div id="step1" class="step">
+    <span class="step-num">1</span><span class="step-title">Iniciar sesión</span>
+    <label for="username">Usuario</label>
+    <input type="text" id="username" placeholder="Tu nombre de usuario" autocomplete="username">
+    <label for="password">Contraseña</label>
+    <input type="password" id="password" placeholder="Tu contraseña" autocomplete="current-password">
+    <button id="btn-login" onclick="login()">Ingresar</button>
+    <div id="msg-login" class="msg"></div>
+  </div>
+
+  <div id="step2" class="step" style="display:none">
+    <span class="step-num">2</span><span class="step-title">Seleccionar dispositivo</span>
+    <p id="user-info" style="font-size:13px;color:#666;margin:8px 0 12px"></p>
+    <label for="device-select">Dispositivo</label>
+    <select id="device-select"></select>
+    <button id="btn-assign" onclick="assign()">Asignar a mi cuenta</button>
+    <div id="msg-assign" class="msg"></div>
+  </div>
+</div>
+
+<script>
+let token = '';
+
+function show(id, msg, type) {
+  const el = document.getElementById(id);
+  el.className = 'msg ' + type;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hide(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+async function login() {
+  const btn = document.getElementById('btn-login');
+  btn.disabled = true;
+  hide('msg-login');
+
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value.trim();
+  if (!username || !password) { show('msg-login', 'Completa todos los campos', 'error'); btn.disabled = false; return; }
+
+  try {
+    const r = await fetch('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await r.json();
+    if (!r.ok) { show('msg-login', data.detail || 'Error al iniciar sesión', 'error'); btn.disabled = false; return; }
+
+    token = data.access_token;
+    const user = data.user;
+    document.getElementById('user-info').textContent = 'Conectado como ' + user.username + ' (' + (user.telegram_id ? '✅ Telegram vinculado' : '⚠️ Sin Telegram') + ')';
+    document.getElementById('step1').style.display = 'none';
+    document.getElementById('step2').style.display = 'block';
+    await loadDevices();
+  } catch(e) {
+    show('msg-login', 'Error de conexión con el servidor', 'error');
+  }
+  btn.disabled = false;
+}
+
+async function loadDevices() {
+  try {
+    const r = await fetch('/api/v1/devices');
+    const data = await r.json();
+    if (!r.ok) throw new Error();
+    const select = document.getElementById('device-select');
+    select.innerHTML = '';
+    for (const d of data.dispositivos) {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      const estado = d.usuario_id ? '🔒 Asignado' : '✅ Libre';
+      opt.textContent = d.nombre + ' (ID ' + d.id + ') — ' + estado;
+      if (!d.usuario_id) select.appendChild(opt);
+    }
+    if (select.options.length === 0) {
+      const opt = document.createElement('option');
+      opt.textContent = '— No hay dispositivos libres —';
+      select.appendChild(opt);
+    }
+  } catch(e) {
+    show('msg-assign', 'Error al cargar dispositivos', 'error');
+  }
+}
+
+async function assign() {
+  const btn = document.getElementById('btn-assign');
+  btn.disabled = true;
+  hide('msg-assign');
+
+  const select = document.getElementById('device-select');
+  const id = parseInt(select.value);
+  if (!id) { show('msg-assign', 'No hay dispositivos disponibles', 'error'); btn.disabled = false; return; }
+
+  try {
+    const r = await fetch('/api/v1/auth/asignar-dispositivo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ dispositivo_id: id })
+    });
+    const data = await r.json();
+    if (!r.ok) { show('msg-assign', data.detail || 'Error al asignar', 'error'); btn.disabled = false; return; }
+
+    show('msg-assign', '✅ ' + data.mensaje + '. Las notificaciones te llegarán al Telegram.', 'success');
+    await loadDevices();
+  } catch(e) {
+    show('msg-assign', 'Error de conexión con el servidor', 'error');
+  }
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>"""
+
+
+@app.get("/setup", response_class=HTMLResponse, tags=["Setup"])
+def setup_page():
+    """Página web para asignar dispositivos a tu cuenta."""
+    return HTMLResponse(content=SETUP_HTML)
