@@ -271,6 +271,29 @@ def ingest_telemetry(
 
             from app.services.telegram import telegram_service
             telegram_service.clear_debounce(dispositivo.id, "APAGON")
+
+            chat_id_rest = None
+            if dispositivo.usuario_id:
+                dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
+                chat_id_rest = dueño.telegram_id if dueño and dueño.telegram_id else None
+            import asyncio
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(
+                    telegram_service.send_notification(
+                        (
+                            f"⚡ *Servicio Restablecido*\n\n"
+                            f"🔌 *Dispositivo:* {dispositivo.nombre or dispositivo.id}\n"
+                            f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
+                            f"⚡ *Voltaje:* {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
+                        ),
+                        dispositivo.id, "RESTABLECIMIENTO", chat_id_rest,
+                    )
+                )
+                loop.close()
+            except Exception:
+                pass
+
             logger.info("RESTABLECIMIENTO registrado para dispositivo %s", dispositivo.id)
 
     db.commit()

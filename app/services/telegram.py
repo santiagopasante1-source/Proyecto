@@ -12,7 +12,7 @@ class TelegramService:
     def __init__(self) -> None:
         self.token = settings.TELEGRAM_BOT_TOKEN
         self.chat_id = settings.TELEGRAM_CHAT_ID
-        self._enabled = bool(self.token and self.chat_id)
+        self._enabled = bool(self.token)
         self._debounce: dict[tuple[int, str], dict] = {}
         self.DEBOUNCE_SECONDS = 300
 
