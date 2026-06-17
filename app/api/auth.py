@@ -12,7 +12,7 @@ from app.core.security import (
 from app.models.usuario import Usuario
 from app.models.dispositivo import Dispositivo
 from app.schemas.usuario import (
-    UserLogin, UserResponse, Token, TelegramLink, DeviceAssign,
+    UserLogin, UserRegister, UserResponse, Token, TelegramLink, DeviceAssign,
     ForgotPasswordRequest, ResetPasswordRequest,
     UpdateUserRequest,
 )
@@ -45,6 +45,28 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario desactivado")
+
+    access_token = create_access_token(data={"sub": str(user.id)})
+    return Token(access_token=access_token, user=UserResponse.model_validate(user))
+
+
+@router.post("/register", response_model=Token, status_code=201)
+def register(payload: UserRegister, db: Session = Depends(get_db)):
+    if db.query(Usuario).filter(Usuario.username == payload.username).first():
+        raise HTTPException(status_code=409, detail="El nombre de usuario ya existe")
+    if db.query(Usuario).filter(Usuario.email == payload.email).first():
+        raise HTTPException(status_code=409, detail="El email ya esta registrado")
+
+    user = Usuario(
+        username=payload.username,
+        email=payload.email,
+        nombre=payload.nombre,
+        password_hash=hash_password(payload.password),
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
 
     access_token = create_access_token(data={"sub": str(user.id)})
     return Token(access_token=access_token, user=UserResponse.model_validate(user))
