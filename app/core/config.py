@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str = ""
 
     # ── Detección de cortes eléctricos
-    OFFLINE_TIMEOUT_SECONDS: int = 30
+    OFFLINE_TIMEOUT_SECONDS: int = 60
 
     # ── Configuración Pydantic-Settings 
     model_config = SettingsConfigDict(

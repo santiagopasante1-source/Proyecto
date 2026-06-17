@@ -16,6 +16,7 @@ Entrenamiento:
 from __future__ import annotations
 
 import logging
+import math
 import os
 from collections import deque
 from typing import Any
@@ -230,6 +231,8 @@ class DeepAnomalyDetector:
             )
             score = float(self.model.predict(input_data, verbose=0)[0][0])
             logger.info(f"DEBUG: Input Vector: {input_data.flatten().tolist()} | Score Calculado: {score}")
+            if math.isnan(score) or math.isinf(score):
+                score = 0.0
             es_anomalia = score > self.threshold
 
             return {

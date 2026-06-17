@@ -25,7 +25,7 @@ TIPOS_TELEGRAM = {"APAGON", "SOBREVOLTAJE", "BAJO_VOLTAJE"}
 
 # Debounce buffer for APAGÓN detection (device_id → list of last N voltage readings)
 _voltage_debounce: dict[int, list[float]] = {}
-DEBOUNCE_COUNT = 2       # consecutive V<70 readings to confirm APAGÓN
+DEBOUNCE_COUNT = 20      # consecutive V<70 readings (~60s) to confirm APAGÓN
 DIAG_BUFFER_SIZE = 5     # keep this many readings for diagnostic logging
 
 def _score_to_severidad(score: float) -> SeveridadEnum:
@@ -145,9 +145,7 @@ def ingest_telemetry(
         _voltage_buf.pop(0)
 
     if tipo_anomalia == "APAGON":
-        if payload.voltaje < 10:
-            apagon_ultimos = f"{payload.voltaje:.1f}V (V<10, inmediato)"
-        elif len(_voltage_buf) >= DEBOUNCE_COUNT and all(v < 70 for v in _voltage_buf[-DEBOUNCE_COUNT:]):
+        if len(_voltage_buf) >= DEBOUNCE_COUNT and all(v < 70 for v in _voltage_buf[-DEBOUNCE_COUNT:]):
             apagon_ultimos = ", ".join(f"{v:.1f}V" for v in _voltage_buf[-DIAG_BUFFER_SIZE:])
         else:
             tipo_anomalia = None  # debounce no confirmado
