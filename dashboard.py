@@ -1140,46 +1140,4 @@ elif pagina == "Sistema":
         else:
             st.error("El ID debe ser un número (ej: 1885567115)")
 
-    st.divider()
-
-    st.markdown('<div class="section-header">Módulo de inferencia en vivo (Prueba Manual)</div>', unsafe_allow_html=True)
-    st.caption("Inserta parámetros eléctricos directamente para evaluar el comportamiento predictivo del motor.")
-
-    tc1, tc2, tc3 = st.columns(3)
-    test_v = tc1.number_input("Voltaje Simulado (V)", value=120.0, min_value=0.0, max_value=1000.0, step=0.5)
-    test_i = tc2.number_input("Corriente Simulada (A)", value=10.0, min_value=0.0, max_value=500.0, step=0.1)
-    test_f = tc3.number_input("Frecuencia Simulada (Hz)", value=60.0, min_value=0.0, max_value=200.0, step=0.5)
-
-    if st.button("Ejecutar Analisis Funcional", type="primary"):
-        resultado = api_post("/analizar", {
-            "voltaje": test_v,
-            "corriente": test_i,
-            "frecuencia": test_f,
-        })
-        if resultado:
-            if resultado.get("anomalia"):
-                st.error(f"**ANOMALIA CAPTURADA** — Tipo: `{resultado.get('tipo')}` — Score: `{resultado.get('score', 0):.3f}`")
-            else:
-                st.success(f"**Muestra Estable** — Comportamiento Electrico Seguro — Score: `{resultado.get('score', 0):.3f}`")
-            with st.expander("Ver metadata cruda de respuesta del backend"):
-                st.json(resultado)
-        else:
-            st.error("Error al establecer comunicación con el endpoint de inferencias.")
-
-    st.divider()
-
-    st.markdown('<div class="section-header">Métricas Estructurales de Base de Datos</div>', unsafe_allow_html=True)
-    df_stats = query_df("""
-        SELECT
-            (SELECT COUNT(*) FROM telemetrias)  as total_telemetrias,
-            (SELECT COUNT(*) FROM incidencias)  as total_incidencias,
-            (SELECT COUNT(*) FROM dispositivos) as total_dispositivos,
-            (SELECT COUNT(*) FROM usuarios)     as total_usuarios
-    """)
-    if not df_stats.empty:
-        row = df_stats.iloc[0]
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Registros de Telemetría", f"{int(row['total_telemetrias']):,}")
-        s2.metric("Historial de Incidencias", f"{int(row['total_incidencias']):,}")
-        s3.metric("Dispositivos Registrados", int(row["total_dispositivos"]))
-        s4.metric("Usuarios de Plataforma", int(row["total_usuarios"]))
+    # fin página Sistema
