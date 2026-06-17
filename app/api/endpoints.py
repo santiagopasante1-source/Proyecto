@@ -186,11 +186,11 @@ def ingest_telemetry(
 
             telegram_service.send_notification(
                 (
-                    f"🚨 *APAGON (CONFIRMADO)*\n\n"
-                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
-                    f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
-                    f"📊 *Severidad:* CRITICA\n"
-                    f"⚡ *Lectura:* {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
+                    f"🚨 APAGON (CONFIRMADO)\n\n"
+                    f"Dispositivo: {dispositivo_nombre}\n"
+                    f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
+                    f"Severidad: CRITICA\n"
+                    f"Lectura: {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
                 ),
                 dispositivo.id,
                 "APAGON",
@@ -225,11 +225,11 @@ def ingest_telemetry(
                 chat_id = dueño.telegram_id if dueño and dueño.telegram_id else None
             telegram_service.send_notification(
                 (
-                    f"🚨 *{tipo_anomalia} DETECTADO*\n\n"
-                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
-                    f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
-                    f"📊 *Severidad:* {severidad.value.upper()}\n"
-                    f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
+                    f"🚨 {tipo_anomalia} DETECTADO\n\n"
+                    f"Dispositivo: {dispositivo_nombre}\n"
+                    f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
+                    f"Severidad: {severidad.value.upper()}\n"
+                    f"Lectura: {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
                 ),
                 dispositivo.id,
                 tipo_anomalia,
@@ -276,10 +276,10 @@ def ingest_telemetry(
                 chat_id_rest = dueño.telegram_id if dueño and dueño.telegram_id else None
             telegram_service.send_notification(
                 (
-                    f"⚡ *Servicio Restablecido*\n\n"
-                    f"🔌 *Dispositivo:* {dispositivo.nombre or dispositivo.id}\n"
-                    f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
-                    f"⚡ *Voltaje:* {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
+                    f"Servicio Restablecido\n\n"
+                    f"Dispositivo: {dispositivo.nombre or dispositivo.id}\n"
+                    f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
+                    f"Voltaje: {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
                 ),
                 dispositivo.id, "RESTABLECIMIENTO", chat_id_rest,
             )

@@ -118,9 +118,9 @@ def forgot_password(
     db.commit()
 
     mensaje = (
-        f"🔐 *Codigo de recuperacion*\n\n"
+        f"🔐 Codigo de recuperacion\n\n"
         f"Tu codigo para restablecer la contrasena es:\n\n"
-        f"`{code}`\n\n"
+        f"{code}\n\n"
         f"Vence en 10 minutos. Si no solicitaste esto, ignora este mensaje."
     )
     telegram_service.send_notification(mensaje, 0, "RECUPERACION", user.telegram_id)
@@ -151,7 +151,7 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
     db.commit()
 
     mensaje = (
-        f"✅ *Contrasena restablecida*\n\n"
+        f"✅ Contrasena restablecida\n\n"
         f"Tu contrasena ha sido cambiada exitosamente."
     )
     telegram_service.send_notification(mensaje, 0, "RECUPERACION", user.telegram_id)
@@ -178,10 +178,10 @@ def test_telegram(
         raise HTTPException(status_code=400, detail="No tienes un ID de Telegram vinculado")
 
     mensaje = (
-        f"🔔 *Prueba de Telegram*\n\n"
-        f"✅ Si recibes esto, las notificaciones de anomalias funcionan correctamente.\n\n"
-        f"👤 *Usuario:* {current_user.username}\n"
-        f"📧 *Email:* {current_user.email}"
+        f"🔔 Prueba de Telegram\n\n"
+        f"Si recibes esto, las notificaciones de anomalias funcionan correctamente.\n\n"
+        f"Usuario: {current_user.username}\n"
+        f"Email: {current_user.email}"
     )
     telegram_service.send_notification(mensaje, 0, "PRUEBA", current_user.telegram_id)
     return {"ok": True, "mensaje": "Mensaje de prueba enviado a Telegram"}

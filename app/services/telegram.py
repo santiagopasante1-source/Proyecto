@@ -50,7 +50,6 @@ class TelegramService:
         payload = {
             "chat_id": target_chat,
             "text": mensaje,
-            "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
 
