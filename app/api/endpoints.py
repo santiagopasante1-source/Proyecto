@@ -184,19 +184,26 @@ def ingest_telemetry(
                 dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
                 chat_id_apagon = dueño.telegram_id if dueño and dueño.telegram_id else None
 
-            background_tasks.add_task(
-                telegram_service.send_notification,
-                (
-                    f"🚨 *APAGON (CONFIRMADO)*\n\n"
-                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
-                    f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
-                    f"📊 *Severidad:* CRITICA\n"
-                    f"⚡ *Lectura:* {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
-                ),
-                dispositivo.id,
-                "APAGON",
-                chat_id_apagon,
-            )
+            import asyncio
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(
+                    telegram_service.send_notification(
+                        (
+                            f"🚨 *APAGON (CONFIRMADO)*\n\n"
+                            f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
+                            f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
+                            f"📊 *Severidad:* CRITICA\n"
+                            f"⚡ *Lectura:* {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
+                        ),
+                        dispositivo.id,
+                        "APAGON",
+                        chat_id_apagon,
+                    )
+                )
+                loop.close()
+            except Exception:
+                pass
             logger.warning("APAGON confirmado para dispositivo %s (V=%s)", dispositivo.id, payload.voltaje)
     elif tipo_anomalia:
         telemetria.anomalia_detectada = True
@@ -224,19 +231,26 @@ def ingest_telemetry(
             if dispositivo.usuario_id:
                 dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
                 chat_id = dueño.telegram_id if dueño and dueño.telegram_id else None
-            background_tasks.add_task(
-                telegram_service.send_notification,
-                (
-                    f"🚨 *{tipo_anomalia} DETECTADO*\n\n"
-                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
-                    f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
-                    f"📊 *Severidad:* {severidad.value.upper()}\n"
-                    f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
-                ),
-                dispositivo.id,
-                tipo_anomalia,
-                chat_id,
-            )
+            import asyncio
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(
+                    telegram_service.send_notification(
+                        (
+                            f"🚨 *{tipo_anomalia} DETECTADO*\n\n"
+                            f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
+                            f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
+                            f"📊 *Severidad:* {severidad.value.upper()}\n"
+                            f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
+                        ),
+                        dispositivo.id,
+                        tipo_anomalia,
+                        chat_id,
+                    )
+                )
+                loop.close()
+            except Exception:
+                pass
 
         logger.warning("%s registrado para dispositivo %s", tipo_anomalia, dispositivo.id)
     else:
