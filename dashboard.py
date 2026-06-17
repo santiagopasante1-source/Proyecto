@@ -1140,4 +1140,18 @@ elif pagina == "Sistema":
         else:
             st.error("El ID debe ser un número (ej: 1885567115)")
 
+    import requests
+    if st.button("📨 Probar Telegram", type="secondary", use_container_width=True):
+        with st.spinner("Enviando mensaje de prueba..."):
+            token = st.session_state.get("token", "")
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            try:
+                r = requests.post(f"{API_BASE}/api/v1/auth/telegram/test", json={}, headers=headers, timeout=10)
+                if r.ok:
+                    st.success("✅ Mensaje de prueba enviado — revisa tu Telegram")
+                else:
+                    st.error(f"❌ {r.json().get('detail', 'Error desconocido')}")
+            except Exception:
+                st.error("❌ Backend sin conexión")
+
     # fin página Sistema

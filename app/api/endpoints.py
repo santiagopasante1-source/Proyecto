@@ -315,62 +315,6 @@ def ingest_telemetry(
             "mensaje": f"{tipo_anomalia} detectado por reglas de ingeniería",
         }
 
-    # 7. Registrar incidencia e hilos de notificación si es anomalía (LSTM)
-    if ia_resultado.get("anomalia") and not tipo_anomalia:
-        score = ia_resultado.get("score", 0.0)
-        tipo_ia = ia_resultado.get("tipo", "ANOMALIA_DETECTADA")
-
-        telemetria.anomalia_detectada = True
-        db.add(telemetria)
-
-        incidencia = Incidencia(
-            dispositivo_id=dispositivo.id,
-            telemetria_id=telemetria.id,
-            tipo=tipo_ia,
-            descripcion=ia_resultado.get("mensaje", "Patrón eléctrico irregular"),
-            severidad=_score_to_severidad(score),
-            score_anomalia=score,
-        )
-        db.add(incidencia)
-        db.commit()
-
-        # Telegram solo para tipos permitidos
-        if tipo_ia in TIPOS_TELEGRAM:
-            try:
-                from app.services.telegram import telegram_service
-
-                chat_id_ia = None
-                if dispositivo.usuario_id:
-                    dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
-                    chat_id_ia = dueño.telegram_id if dueño and dueño.telegram_id else None
-
-                dispositivo_nombre = dispositivo.nombre or f"ID {dispositivo.id}"
-                ubicacion_disp = dispositivo.ubicacion or "No especificada"
-
-                mensaje = (
-                    f"🚨 *ANOMALIA ELECTRICA DETECTADA*\n\n"
-                    f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
-                    f"📍 *Ubicacion:* {ubicacion_disp}\n"
-                    f"🚨 *Tipo:* {incidencia.tipo}\n"
-                    f"📊 *Severidad:* {incidencia.severidad.value.upper()}\n"
-                    f"📈 *Score IA:* {score:.4f}\n\n"
-                    f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
-                )
-                background_tasks.add_task(
-                    telegram_service.send_notification, mensaje, dispositivo.id, tipo_ia, chat_id_ia,
-                )
-
-            except Exception as telegram_err:
-                logger.error(f"Error al programar la alerta de Telegram: {telegram_err}")
-    elif not tipo_anomalia:
-        # Sin anomalía — limpiar debounce LSTM
-        try:
-            from app.services.telegram import telegram_service
-            for t in ["ANOMALIA_LSTM", "ANOMALIA_DETECTADA"]:
-                telegram_service.clear_debounce(dispositivo.id, t)
-        except Exception:
-            pass
-
     # 7. Retorno final estructurado al cliente (Simulador / ESP32)
     return TelemetriaIAResult(
         telemetria=TelemetriaResponse.model_validate(telemetria),

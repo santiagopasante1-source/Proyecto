@@ -160,4 +160,29 @@ def link_telegram(
     return {"ok": True, "telegram_id": payload.telegram_id}
 
 
+@router.post("/telegram/test")
+def test_telegram(
+    current_user: Usuario = Depends(get_current_user),
+):
+    if not current_user.telegram_id:
+        raise HTTPException(status_code=400, detail="No tienes un ID de Telegram vinculado")
+
+    mensaje = (
+        f"🔔 *Prueba de Telegram*\n\n"
+        f"✅ Si recibes esto, las notificaciones de anomalias funcionan correctamente.\n\n"
+        f"👤 *Usuario:* {current_user.username}\n"
+        f"📧 *Email:* {current_user.email}"
+    )
+    import asyncio
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(
+            telegram_service.send_notification(mensaje, 0, "PRUEBA", current_user.telegram_id)
+        )
+        loop.close()
+        return {"ok": True, "mensaje": "Mensaje de prueba enviado a Telegram"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al enviar: {str(e)}")
+
+
 
