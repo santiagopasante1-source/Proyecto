@@ -23,6 +23,11 @@ router = APIRouter(prefix="/api/v1", tags=["Telemetría"])
 
 TIPOS_TELEGRAM = {"APAGON", "SOBREVOLTAJE", "BAJO_VOLTAJE"}
 
+# Debounce buffer for APAGÓN detection (device_id → list of last N voltage readings)
+_voltage_debounce: dict[int, list[float]] = {}
+DEBOUNCE_COUNT = 2       # consecutive V<70 readings to confirm APAGÓN
+DIAG_BUFFER_SIZE = 5     # keep this many readings for diagnostic logging
+
 def _score_to_severidad(score: float) -> SeveridadEnum:
     """Traduce el score de la IA a niveles de severidad de negocio."""
     if score >= 0.90: 
@@ -133,11 +138,21 @@ def ingest_telemetry(
     # 5. Clasificar anomalía por reglas de ingeniería
     tipo_anomalia = _clasificar_tipo_anomalia(payload.voltaje, payload.frecuencia)
 
+    # 5b. APAGÓN debounce: requiere lecturas consecutivas para evitar falsos por ruido ADC/WiFi
+    _voltage_buf = _voltage_debounce.setdefault(dispositivo.id, [])
+    _voltage_buf.append(payload.voltaje)
+    if len(_voltage_buf) > DIAG_BUFFER_SIZE:
+        _voltage_buf.pop(0)
+
     if tipo_anomalia == "APAGON":
-        # Forzar V=0/I=0 en la telemetría para que el dashboard muestre la caída
-        telemetria.voltaje = 0.0
-        telemetria.corriente = 0.0
-        telemetria.potencia = 0.0
+        if payload.voltaje < 10:
+            apagon_ultimos = f"{payload.voltaje:.1f}V (V<10, inmediato)"
+        elif len(_voltage_buf) >= DEBOUNCE_COUNT and all(v < 70 for v in _voltage_buf[-DEBOUNCE_COUNT:]):
+            apagon_ultimos = ", ".join(f"{v:.1f}V" for v in _voltage_buf[-DIAG_BUFFER_SIZE:])
+        else:
+            tipo_anomalia = None  # debounce no confirmado
+
+    if tipo_anomalia == "APAGON":
         telemetria.anomalia_detectada = True
         db.add(telemetria)
 
@@ -153,7 +168,8 @@ def ingest_telemetry(
                 telemetria_id=telemetria.id,
                 tipo="APAGON",
                 descripcion=(
-                    f"Corte de energía detectado — V={payload.voltaje}V, I={payload.corriente}A, "
+                    f"Corte de energía — V={payload.voltaje}V "
+                    f"(historial: {apagon_ultimos}), I={payload.corriente}A, "
                     f"F={payload.frecuencia or 60.0}Hz"
                 ),
                 severidad=SeveridadEnum.critica,
@@ -173,17 +189,17 @@ def ingest_telemetry(
             background_tasks.add_task(
                 telegram_service.send_notification,
                 (
-                    f"🚨 *APAGON DETECTADO*\n\n"
+                    f"🚨 *APAGON (CONFIRMADO)*\n\n"
                     f"🔌 *Dispositivo:* {dispositivo_nombre}\n"
                     f"📍 *Ubicacion:* {dispositivo.ubicacion or 'No especificada'}\n"
                     f"📊 *Severidad:* CRITICA\n"
-                    f"⚡ *Lectura:* {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
+                    f"⚡ *Lectura:* {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
                 ),
                 dispositivo.id,
                 "APAGON",
                 chat_id_apagon,
             )
-            logger.warning("APAGON registrado para dispositivo %s", dispositivo.id)
+            logger.warning("APAGON confirmado para dispositivo %s (V=%s)", dispositivo.id, payload.voltaje)
     elif tipo_anomalia:
         telemetria.anomalia_detectada = True
         db.add(telemetria)
