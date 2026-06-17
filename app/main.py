@@ -266,38 +266,55 @@ SETUP_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Setup - Asignar Dispositivo</title>
+<title>Setup - Configurar Dispositivos</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 40px 20px; }
-  .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); padding: 32px; max-width: 480px; width: 100%; }
+  .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); padding: 32px; max-width: 560px; width: 100%; }
   h1 { font-size: 22px; color: #1a1a2e; margin-bottom: 4px; }
   .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
-  label { display: block; font-size: 13px; font-weight: 600; color: #333; margin: 12px 0 4px; }
+  .section { border-top: 1px solid #e5e7eb; margin-top: 20px; padding-top: 20px; }
+  .section-title { font-weight: 600; color: #1a1a2e; font-size: 15px; margin-bottom: 12px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #333; margin: 10px 0 4px; }
   input, select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
   input:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
-  button { width: 100%; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 16px; }
+  button { width: 100%; padding: 11px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 12px; }
   button:hover { background: #1d4ed8; }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
-  .msg { padding: 10px 14px; border-radius: 8px; margin-top: 16px; font-size: 14px; display: none; }
+  button.sec { background: #6b7280; }
+  button.sec:hover { background: #4b5563; }
+  button.danger { background: #dc2626; }
+  button.danger:hover { background: #b91c1c; }
+  .msg { padding: 10px 14px; border-radius: 8px; margin-top: 12px; font-size: 14px; display: none; }
   .success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; display: block; }
   .error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; display: block; }
   .info { background: #e0f2fe; color: #075985; border: 1px solid #bae6fd; display: block; }
-  .step { border-top: 1px solid #e5e7eb; margin-top: 20px; padding-top: 20px; }
-  .step-num { display: inline-block; width: 24px; height: 24px; background: #2563eb; color: #fff; border-radius: 50%; text-align: center; line-height: 24px; font-size: 13px; font-weight: 700; margin-right: 8px; }
-  .step-title { font-weight: 600; color: #1a1a2e; font-size: 15px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .device-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f9fafb; border-radius: 8px; margin-bottom: 8px; }
+  .device-name { font-weight: 600; font-size: 14px; }
+  .device-id { color: #9ca3af; font-size: 12px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
   .badge-free { background: #dbeafe; color: #1e40af; }
-  .badge-owned { background: #d1fae5; color: #065f46; }
+  .badge-yours { background: #d1fae5; color: #065f46; }
+  .badge-other { background: #fef3c7; color: #92400e; }
+  .user-card { background: #f0f9ff; padding: 14px; border-radius: 10px; margin-bottom: 12px; font-size: 14px; }
+  .user-card .row { display: flex; justify-content: space-between; padding: 4px 0; }
+  .user-card .label { color: #6b7280; }
+  .user-card .value { font-weight: 500; }
+  .inline-group { display: flex; gap: 8px; }
+  .inline-group input { flex: 1; }
+  .inline-group button { width: auto; padding: 10px 16px; margin-top: 0; flex-shrink: 0; }
+  .link { color: #2563eb; cursor: pointer; text-decoration: underline; font-size: 13px; }
+  .link:hover { color: #1d4ed8; }
 </style>
 </head>
 <body>
 <div class="card">
   <h1>🔧 Configuración</h1>
-  <p class="subtitle">Asigna un dispositivo a tu cuenta para recibir notificaciones</p>
+  <p class="subtitle">Administra tus dispositivos y notificaciones Telegram</p>
 
-  <div id="step1" class="step">
-    <span class="step-num">1</span><span class="step-title">Iniciar sesión</span>
+  <!-- Step 1: Login -->
+  <div id="step1">
+    <div class="section-title">Iniciar sesión</div>
     <label for="username">Usuario</label>
     <input type="text" id="username" placeholder="Tu nombre de usuario" autocomplete="username">
     <label for="password">Contraseña</label>
@@ -306,18 +323,39 @@ SETUP_HTML = """<!DOCTYPE html>
     <div id="msg-login" class="msg"></div>
   </div>
 
-  <div id="step2" class="step" style="display:none">
-    <span class="step-num">2</span><span class="step-title">Seleccionar dispositivo</span>
-    <p id="user-info" style="font-size:13px;color:#666;margin:8px 0 12px"></p>
-    <label for="device-select">Dispositivo</label>
-    <select id="device-select"></select>
-    <button id="btn-assign" onclick="assign()">Asignar a mi cuenta</button>
-    <div id="msg-assign" class="msg"></div>
+  <!-- Step 2: Dashboard -->
+  <div id="step2" style="display:none">
+
+    <!-- User info -->
+    <div id="user-card" class="user-card"></div>
+
+    <!-- Telegram -->
+    <div class="section">
+      <div class="section-title">📨 Telegram</div>
+      <div class="inline-group">
+        <input type="text" id="tg-input" placeholder="ID numérico (ej: 1885567115)">
+        <button id="btn-tg" onclick="saveTelegram()">Guardar</button>
+      </div>
+      <button class="sec" id="btn-tg-test" onclick="testTelegram()">📨 Probar Telegram</button>
+      <div id="msg-tg" class="msg"></div>
+    </div>
+
+    <!-- Devices -->
+    <div class="section">
+      <div class="section-title">📟 Dispositivos</div>
+      <div id="device-list"></div>
+      <div id="msg-dev" class="msg"></div>
+    </div>
+
+    <div style="margin-top: 20px; text-align: center;">
+      <span class="link" onclick="logout()">Cerrar sesión</span>
+    </div>
   </div>
 </div>
 
 <script>
 let token = '';
+let userId = 0;
 
 function show(id, msg, type) {
   const el = document.getElementById(id);
@@ -327,7 +365,9 @@ function show(id, msg, type) {
 }
 
 function hide(id) {
-  document.getElementById(id).style.display = 'none';
+  const el = document.getElementById(id);
+  el.style.display = 'none';
+  el.className = 'msg';
 }
 
 async function login() {
@@ -349,8 +389,15 @@ async function login() {
     if (!r.ok) { show('msg-login', data.detail || 'Error al iniciar sesión', 'error'); btn.disabled = false; return; }
 
     token = data.access_token;
-    const user = data.user;
-    document.getElementById('user-info').textContent = 'Conectado como ' + user.username + ' (' + (user.telegram_id ? '✅ Telegram vinculado' : '⚠️ Sin Telegram') + ')';
+    userId = data.user.id;
+
+    document.getElementById('user-card').innerHTML =
+      '<div class="row"><span class="label">👤 Usuario</span><span class="value">' + data.user.username + '</span></div>' +
+      '<div class="row"><span class="label">📧 Email</span><span class="value">' + (data.user.email || '—') + '</span></div>' +
+      '<div class="row"><span class="label">🤖 Telegram</span><span class="value">' + (data.user.telegram_id ? '✅ ' + data.user.telegram_id : '❌ No vinculado') + '</span></div>';
+
+    document.getElementById('tg-input').value = data.user.telegram_id || '';
+
     document.getElementById('step1').style.display = 'none';
     document.getElementById('step2').style.display = 'block';
     await loadDevices();
@@ -360,52 +407,144 @@ async function login() {
   btn.disabled = false;
 }
 
+function logout() {
+  token = '';
+  userId = 0;
+  document.getElementById('step1').style.display = 'block';
+  document.getElementById('step2').style.display = 'none';
+  document.getElementById('username').value = '';
+  document.getElementById('password').value = '';
+}
+
 async function loadDevices() {
+  hide('msg-dev');
   try {
     const r = await fetch('/api/v1/devices');
     const data = await r.json();
     if (!r.ok) throw new Error();
-    const select = document.getElementById('device-select');
-    select.innerHTML = '';
-    for (const d of data.dispositivos) {
-      const opt = document.createElement('option');
-      opt.value = d.id;
-      const estado = d.usuario_id ? '🔒 Asignado' : '✅ Libre';
-      opt.textContent = d.nombre + ' (ID ' + d.id + ') — ' + estado;
-      if (!d.usuario_id) select.appendChild(opt);
+    const list = document.getElementById('device-list');
+    list.innerHTML = '';
+
+    if (data.dispositivos.length === 0) {
+      list.innerHTML = '<p style="color:#9ca3af;font-size:14px">No hay dispositivos registrados.</p>';
+      return;
     }
-    if (select.options.length === 0) {
-      const opt = document.createElement('option');
-      opt.textContent = '— No hay dispositivos libres —';
-      select.appendChild(opt);
+
+    for (const d of data.dispositivos) {
+      const row = document.createElement('div');
+      row.className = 'device-row';
+
+      let badge = '';
+      let canAssign = false;
+      if (!d.usuario_id) {
+        badge = '<span class="badge badge-free">✅ Libre</span>';
+        canAssign = true;
+      } else if (d.usuario_id === userId) {
+        badge = '<span class="badge badge-yours">✅ Tuyo</span>';
+      } else {
+        badge = '<span class="badge badge-other">🔒 Otro usuario</span>';
+      }
+
+      const info = document.createElement('div');
+      info.innerHTML = '<div class="device-name">' + d.nombre + ' <span class="device-id">(ID ' + d.id + ')</span></div>' + badge;
+
+      const btn = document.createElement('button');
+      if (!d.usuario_id) {
+        btn.textContent = 'Asignar a mi cuenta';
+        btn.onclick = function() { assignDevice(d.id, false); };
+      } else if (d.usuario_id === userId) {
+        btn.textContent = '✔ Asignado';
+        btn.disabled = true;
+        btn.style.background = '#6b7280';
+      } else {
+        btn.textContent = 'Tomar dispositivo';
+        btn.className = 'danger';
+        btn.onclick = function() { assignDevice(d.id, true); };
+      }
+      btn.style.width = 'auto';
+      btn.style.marginTop = '0';
+      btn.style.padding = '6px 14px';
+      btn.style.fontSize = '13px';
+
+      row.appendChild(info);
+      row.appendChild(btn);
+      list.appendChild(row);
     }
   } catch(e) {
-    show('msg-assign', 'Error al cargar dispositivos', 'error');
+    show('msg-dev', 'Error al cargar dispositivos', 'error');
   }
 }
 
-async function assign() {
-  const btn = document.getElementById('btn-assign');
-  btn.disabled = true;
-  hide('msg-assign');
-
-  const select = document.getElementById('device-select');
-  const id = parseInt(select.value);
-  if (!id) { show('msg-assign', 'No hay dispositivos disponibles', 'error'); btn.disabled = false; return; }
-
+async function assignDevice(id, force) {
+  hide('msg-dev');
   try {
+    const body = { dispositivo_id: id };
+    if (force) body.force = true;
     const r = await fetch('/api/v1/auth/asignar-dispositivo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-      body: JSON.stringify({ dispositivo_id: id })
+      body: JSON.stringify(body)
     });
     const data = await r.json();
-    if (!r.ok) { show('msg-assign', data.detail || 'Error al asignar', 'error'); btn.disabled = false; return; }
-
-    show('msg-assign', '✅ ' + data.mensaje + '. Las notificaciones te llegarán al Telegram.', 'success');
+    if (!r.ok) {
+      if (r.status === 409) {
+        if (confirm('Este dispositivo pertenece a otro usuario. ¿Tomarlo?')) {
+          return assignDevice(id, true);
+        }
+      } else {
+        show('msg-dev', data.detail || 'Error al asignar', 'error');
+      }
+      return;
+    }
+    show('msg-dev', '✅ ' + data.mensaje, 'success');
     await loadDevices();
   } catch(e) {
-    show('msg-assign', 'Error de conexión con el servidor', 'error');
+    show('msg-dev', 'Error de conexión con el servidor', 'error');
+  }
+}
+
+async function saveTelegram() {
+  const btn = document.getElementById('btn-tg');
+  btn.disabled = true;
+  hide('msg-tg');
+
+  const val = document.getElementById('tg-input').value.trim();
+  if (!val || !/^\\d+$/.test(val)) { show('msg-tg', 'Ingresa un ID numérico de Telegram', 'error'); btn.disabled = false; return; }
+
+  try {
+    const r = await fetch('/api/v1/auth/telegram', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ telegram_id: parseInt(val) })
+    });
+    const data = await r.json();
+    if (!r.ok) { show('msg-tg', data.detail || 'Error al guardar', 'error'); btn.disabled = false; return; }
+    show('msg-tg', '✅ Telegram vinculado correctamente', 'success');
+    // Refresh user info
+    const r2 = await fetch('/api/v1/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+    const user = await r2.json();
+    document.querySelector('#user-card .row:nth-child(3) .value').textContent = '✅ ' + val;
+  } catch(e) {
+    show('msg-tg', 'Error de conexión con el servidor', 'error');
+  }
+  btn.disabled = false;
+}
+
+async function testTelegram() {
+  const btn = document.getElementById('btn-tg-test');
+  btn.disabled = true;
+  hide('msg-tg');
+  try {
+    const r = await fetch('/api/v1/auth/telegram/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: '{}'
+    });
+    const data = await r.json();
+    if (!r.ok) { show('msg-tg', data.detail || 'Error al enviar prueba', 'error'); btn.disabled = false; return; }
+    show('msg-tg', '✅ Mensaje de prueba enviado — revisa tu Telegram', 'success');
+  } catch(e) {
+    show('msg-tg', 'Error de conexión con el servidor', 'error');
   }
   btn.disabled = false;
 }

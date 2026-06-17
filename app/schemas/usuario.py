@@ -34,6 +34,7 @@ class Token(BaseModel):
 
 class DeviceAssign(BaseModel):
     dispositivo_id: int = Field(..., gt=0)
+    force: bool = Field(default=False, description="Forzar asignación incluso si pertenece a otro usuario")
 
 
 class TelegramLink(BaseModel):

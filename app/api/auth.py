@@ -198,7 +198,8 @@ def asignar_dispositivo(
         raise HTTPException(status_code=404, detail="Dispositivo no encontrado")
 
     if dispositivo.usuario_id is not None and dispositivo.usuario_id != current_user.id:
-        raise HTTPException(status_code=409, detail="Este dispositivo ya esta asignado a otro usuario")
+        if not payload.force:
+            raise HTTPException(status_code=409, detail="Este dispositivo ya esta asignado a otro usuario")
 
     dispositivo.usuario_id = current_user.id
     db.commit()
