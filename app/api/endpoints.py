@@ -21,7 +21,7 @@ from app.schemas.telemetria import TelemetriaCreate, TelemetriaIAResult, Telemet
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["Telemetría"])
 
-TIPOS_TELEGRAM = {"APAGON", "SOBREVOLTAJE", "BAJO_VOLTAJE"}
+TIPOS_TELEGRAM = {"APAGON", "SOBREVOLTAJE", "BAJO_VOLTAJE", "FRECUENCIA_ANOMALA"}
 
 # Debounce buffer for APAGÓN detection (device_id → list of last N voltage readings)
 _voltage_debounce: dict[int, list[float]] = {}
