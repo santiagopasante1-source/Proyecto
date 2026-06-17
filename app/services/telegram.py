@@ -1,7 +1,7 @@
 import logging
 import time
 
-import httpx
+import requests
 
 from app.core.config import settings
 
@@ -16,7 +16,7 @@ class TelegramService:
         self._debounce: dict[tuple[int, str], dict] = {}
         self.DEBOUNCE_SECONDS = 300
 
-    async def send_notification(
+    def send_notification(
         self, mensaje: str, dispositivo_id: int = 0, tipo: str = "", chat_id: str | None = None
     ) -> None:
         target_chat = chat_id or self.chat_id
@@ -55,9 +55,8 @@ class TelegramService:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(url, json=payload, timeout=10)
-                resp.raise_for_status()
+            resp = requests.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
             logger.info("Notificación enviada a Telegram")
         except Exception as e:
             logger.error("Error enviando notificación a Telegram: %s", e)

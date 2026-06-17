@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
 
@@ -80,7 +80,6 @@ def update_me(
 @router.post("/forgot-password")
 def forgot_password(
     payload: ForgotPasswordRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     user = db.query(Usuario).filter(Usuario.username == payload.username).first()
@@ -101,10 +100,7 @@ def forgot_password(
         f"`{code}`\n\n"
         f"Vence en 10 minutos. Si no solicitaste esto, ignora este mensaje."
     )
-    background_tasks.add_task(
-        telegram_service.send_notification,
-        mensaje, 0, "RECUPERACION", user.telegram_id,
-    )
+    telegram_service.send_notification(mensaje, 0, "RECUPERACION", user.telegram_id)
 
     return {"ok": True, "mensaje": "Si el usuario existe, revisa tu Telegram"}
 
@@ -135,16 +131,7 @@ def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db))
         f"✅ *Contrasena restablecida*\n\n"
         f"Tu contrasena ha sido cambiada exitosamente."
     )
-    from app.services.telegram import telegram_service
-    import asyncio
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(
-            telegram_service.send_notification(mensaje, 0, "RECUPERACION", user.telegram_id)
-        )
-        loop.close()
-    except Exception:
-        pass
+    telegram_service.send_notification(mensaje, 0, "RECUPERACION", user.telegram_id)
 
     return {"ok": True, "mensaje": "Contrasena restablecida exitosamente"}
 
@@ -173,16 +160,8 @@ def test_telegram(
         f"👤 *Usuario:* {current_user.username}\n"
         f"📧 *Email:* {current_user.email}"
     )
-    import asyncio
-    try:
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(
-            telegram_service.send_notification(mensaje, 0, "PRUEBA", current_user.telegram_id)
-        )
-        loop.close()
-        return {"ok": True, "mensaje": "Mensaje de prueba enviado a Telegram"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al enviar: {str(e)}")
+    telegram_service.send_notification(mensaje, 0, "PRUEBA", current_user.telegram_id)
+    return {"ok": True, "mensaje": "Mensaje de prueba enviado a Telegram"}
 
 
 
