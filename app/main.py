@@ -337,7 +337,9 @@ SETUP_HTML = """<!DOCTYPE html>
         <button id="btn-tg" onclick="saveTelegram()">Guardar</button>
       </div>
       <button class="sec" id="btn-tg-test" onclick="testTelegram()">📨 Probar Telegram</button>
+      <button class="sec" id="btn-tg-diag" onclick="diagnosticTelegram()" style="margin-top:6px">🔍 Diagnóstico</button>
       <div id="msg-tg" class="msg"></div>
+      <pre id="diag-result" style="display:none;background:#f3f4f6;padding:10px;border-radius:8px;font-size:12px;margin-top:8px;white-space:pre-wrap;word-break:break-all;"></pre>
     </div>
 
     <!-- Devices -->
@@ -543,6 +545,33 @@ async function testTelegram() {
     const data = await r.json();
     if (!r.ok) { show('msg-tg', data.detail || 'Error al enviar prueba', 'error'); btn.disabled = false; return; }
     show('msg-tg', '✅ Mensaje de prueba enviado — revisa tu Telegram', 'success');
+  } catch(e) {
+    show('msg-tg', 'Error de conexión con el servidor', 'error');
+  }
+  btn.disabled = false;
+}
+
+async function diagnosticTelegram() {
+  const btn = document.getElementById('btn-tg-diag');
+  btn.disabled = true;
+  hide('msg-tg');
+  const pre = document.getElementById('diag-result');
+  pre.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/v1/auth/telegram/diagnostico', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: '{}'
+    });
+    const data = await r.json();
+    pre.textContent = JSON.stringify(data, null, 2);
+    pre.style.display = 'block';
+    if (data.ok) {
+      show('msg-tg', '✅ Telegram funciona correctamente', 'success');
+    } else {
+      show('msg-tg', '❌ Error en Telegram — revisa el diagnóstico', 'error');
+    }
   } catch(e) {
     show('msg-tg', 'Error de conexión con el servidor', 'error');
   }

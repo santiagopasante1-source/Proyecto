@@ -187,6 +187,24 @@ def test_telegram(
     return {"ok": True, "mensaje": "Mensaje de prueba enviado a Telegram"}
 
 
+@router.post("/telegram/diagnostico")
+def diagnostic_telegram(
+    current_user: Usuario = Depends(get_current_user),
+):
+    if not current_user.telegram_id:
+        raise HTTPException(status_code=400, detail="No tienes un ID de Telegram vinculado")
+
+    result = telegram_service.send_diagnostic(current_user.telegram_id)
+    return {
+        "ok": result.get("ok", False),
+        "telegram_status": result.get("status"),
+        "telegram_response": result.get("body"),
+        "telegram_error": result.get("error"),
+        "servicio_habilitado": telegram_service._enabled,
+        "chat_id": current_user.telegram_id,
+    }
+
+
 @router.post("/asignar-dispositivo")
 def asignar_dispositivo(
     payload: DeviceAssign,

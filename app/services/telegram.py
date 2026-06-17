@@ -60,6 +60,29 @@ class TelegramService:
         except Exception as e:
             logger.error("Error enviando notificación a Telegram: %s", e)
 
+    def send_diagnostic(self, chat_id: str) -> dict:
+        """Envía mensaje de prueba SIN debounce y devuelve la respuesta de Telegram."""
+        if not self._enabled:
+            return {"ok": False, "error": "Telegram no habilitado — TELEGRAM_BOT_TOKEN vacío"}
+        if not chat_id:
+            return {"ok": False, "error": "chat_id vacío"}
+
+        url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": "🔧 Mensaje de diagnóstico — si ves esto, Telegram funciona correctamente.",
+            "disable_web_page_preview": True,
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=15)
+            return {
+                "ok": resp.ok,
+                "status": resp.status_code,
+                "body": resp.text,
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def clear_debounce(self, dispositivo_id: int, tipo: str) -> None:
         key = (dispositivo_id, tipo or "ANOMALIA")
         if key in self._debounce:
