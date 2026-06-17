@@ -13,6 +13,7 @@ from app.models.usuario import Usuario
 from app.schemas.usuario import (
     UserLogin, UserResponse, Token, TelegramLink,
     ForgotPasswordRequest, ResetPasswordRequest,
+    UpdateUserRequest,
 )
 from app.services.telegram import telegram_service
 
@@ -50,6 +51,29 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 def me(current_user: Usuario = Depends(get_current_user)):
+    return UserResponse.model_validate(current_user)
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_me(
+    payload: UpdateUserRequest,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if payload.email is not None and payload.email != current_user.email:
+        existing = db.query(Usuario).filter(Usuario.email == payload.email).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Ese email ya está registrado por otro usuario")
+        current_user.email = payload.email
+
+    if payload.username is not None and payload.username != current_user.username:
+        existing = db.query(Usuario).filter(Usuario.username == payload.username).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Ese nombre de usuario ya está registrado")
+        current_user.username = payload.username
+
+    db.commit()
+    db.refresh(current_user)
     return UserResponse.model_validate(current_user)
 
 

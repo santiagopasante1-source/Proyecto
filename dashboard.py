@@ -105,6 +105,18 @@ def api_put(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
         return None
 
 
+def api_patch(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
+    """PATCH con token — para actualizar parcialmente datos del usuario."""
+    token = st.session_state.get("token")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        r = requests.patch(f"{API_BASE}{endpoint}", json=payload, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
 # ── Helpers de acceso a datos ─────────────────────────────────────────────────
 
 @st.cache_resource
@@ -1055,33 +1067,52 @@ elif pagina == "Incidencias":
 # ══════════════════════════════════════════════════════════════════════════════
 
 elif pagina == "Sistema":
-    st.title("Estado de Salud e Inferencia de Dispositivos")
+    st.title("Configuración de la Cuenta")
 
-    col1, col2 = st.columns(2)
+    user = st.session_state.get("user", {})
 
-    with col1:
-        st.markdown('<div class="section-header">Estatus Backend FastAPI</div>', unsafe_allow_html=True)
-        health = api_get("/health")
-        if health:
-            st.success("Conectado exitosamente con el backend.")
-            st.json(health)
-        else:
-            st.error(f"Imposible conectar con la dirección: {API_BASE}/health")
-            st.info("Por favor verifica si el servicio de FastAPI se encuentra inicializado localmente.")
+    st.markdown('<div class="section-header">Datos de la Cuenta</div>', unsafe_allow_html=True)
+    st.caption("Actualiza tu email o nombre de usuario.")
 
-    with col2:
-        st.markdown('<div class="section-header">Estatus Motor de IA (Bidirectional-LSTM)</div>', unsafe_allow_html=True)
-        ia_status = api_get("/ia/status")
-        if ia_status:
-            modo = ia_status.get("mode", "—")
-            listo = ia_status.get("ready", False)
-            if listo:
-                st.success(f"Modo actual: **{modo.upper()}** — Listo para inferencias de red en vivo.")
+    col_e1, col_e2 = st.columns([3, 1])
+    current_email = user.get("email", "")
+    email_input = col_e1.text_input(
+        "Correo electrónico",
+        value=current_email,
+        key="email_input",
+        label_visibility="collapsed",
+        placeholder="correo@ejemplo.com",
+    )
+    if col_e2.button("Guardar Email", type="primary", use_container_width=True):
+        if email_input.strip() and email_input.strip() != current_email:
+            res = api_patch("/api/v1/auth/me", {"email": email_input.strip()})
+            if res:
+                st.success("✅ Email actualizado correctamente")
+                st.session_state.user["email"] = email_input.strip()
             else:
-                st.warning(f"Modo: **{modo}** — El modelo se encuentra cargando estructuras o fuera de línea.")
-            st.json(ia_status)
+                st.error("Error — ese email podría estar ya registrado")
         else:
-            st.error("Error crítico al recuperar el estado del modelo neuronal.")
+            st.info("No hay cambios en el email.")
+
+    col_u1, col_u2 = st.columns([3, 1])
+    current_username = user.get("username", "")
+    username_input = col_u1.text_input(
+        "Nombre de usuario",
+        value=current_username,
+        key="username_input",
+        label_visibility="collapsed",
+        placeholder="nombre_usuario",
+    )
+    if col_u2.button("Guardar Usuario", type="primary", use_container_width=True):
+        if username_input.strip() and username_input.strip() != current_username:
+            res = api_patch("/api/v1/auth/me", {"username": username_input.strip()})
+            if res:
+                st.success("✅ Usuario actualizado correctamente")
+                st.session_state.user["username"] = username_input.strip()
+            else:
+                st.error("Error — ese nombre de usuario podría estar ya registrado")
+        else:
+            st.info("No hay cambios en el usuario.")
 
     st.divider()
 
@@ -1089,9 +1120,7 @@ elif pagina == "Sistema":
     st.caption("Vincula tu ID de Telegram para recibir alertas de anomalías en tus dispositivos.")
 
     col_tg1, col_tg2 = st.columns([3, 1])
-    user = st.session_state.get("user", {})
     current_tg = user.get("telegram_id", "")
-
     tg_input = col_tg1.text_input(
         "ID de Telegram (ej: 1885567115)",
         value=current_tg if current_tg else "",

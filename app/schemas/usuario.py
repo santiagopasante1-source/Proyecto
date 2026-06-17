@@ -21,6 +21,7 @@ class UserResponse(BaseModel):
     nombre: str | None = None
     is_active: bool
     created_at: datetime
+    telegram_id: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -47,3 +48,8 @@ class ResetPasswordRequest(BaseModel):
     username: str
     code: str = Field(..., min_length=6, max_length=6)
     new_password: str = Field(..., min_length=6, max_length=128)
+
+
+class UpdateUserRequest(BaseModel):
+    email: EmailStr | None = None
+    username: str | None = Field(None, min_length=3, max_length=80)
