@@ -1154,4 +1154,33 @@ elif pagina == "Sistema":
             except Exception:
                 st.error("❌ Backend sin conexión")
 
+    st.divider()
+    st.markdown('<div class="section-header">Dispositivos</div>', unsafe_allow_html=True)
+
+    df_asignados = get_user_devices(uid)
+    if not df_asignados.empty:
+        st.caption(f"Tienes **{len(df_asignados)}** dispositivo(s) asignado(s):")
+        for _, row in df_asignados.iterrows():
+            st.markdown(f"- ✅ {row['nombre']} (ID {row['id']})")
+    else:
+        st.info("No tienes dispositivos asignados.")
+
+    df_libres = query_df(
+        "SELECT id, nombre FROM dispositivos WHERE is_active = TRUE AND usuario_id IS NULL",
+    )
+    if not df_libres.empty:
+        st.markdown("##### Asignar un dispositivo nuevo")
+        opts = {f"{r['nombre']} (ID {r['id']})": r['id'] for _, r in df_libres.iterrows()}
+        selected_label = st.selectbox("Selecciona un dispositivo disponible", list(opts.keys()), label_visibility="collapsed")
+        if st.button("🔗 Asignar este dispositivo", type="primary", use_container_width=True):
+            res = api_post("/api/v1/auth/asignar-dispositivo", {"dispositivo_id": opts[selected_label]})
+            if res:
+                st.success(f"✅ {res['mensaje']}")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("Error al asignar — verifica que el backend esté corriendo")
+    else:
+        st.caption("No hay dispositivos libres disponibles.")
+
     # fin página Sistema

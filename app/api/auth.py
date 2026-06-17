@@ -10,8 +10,9 @@ from app.core.security import (
     hash_password, generate_reset_code, hash_reset_code,
 )
 from app.models.usuario import Usuario
+from app.models.dispositivo import Dispositivo
 from app.schemas.usuario import (
-    UserLogin, UserResponse, Token, TelegramLink,
+    UserLogin, UserResponse, Token, TelegramLink, DeviceAssign,
     ForgotPasswordRequest, ResetPasswordRequest,
     UpdateUserRequest,
 )
@@ -162,6 +163,30 @@ def test_telegram(
     )
     telegram_service.send_notification(mensaje, 0, "PRUEBA", current_user.telegram_id)
     return {"ok": True, "mensaje": "Mensaje de prueba enviado a Telegram"}
+
+
+@router.post("/asignar-dispositivo")
+def asignar_dispositivo(
+    payload: DeviceAssign,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    dispositivo = db.query(Dispositivo).filter(Dispositivo.id == payload.dispositivo_id).first()
+    if not dispositivo:
+        raise HTTPException(status_code=404, detail="Dispositivo no encontrado")
+
+    if dispositivo.usuario_id is not None and dispositivo.usuario_id != current_user.id:
+        raise HTTPException(status_code=409, detail="Este dispositivo ya esta asignado a otro usuario")
+
+    dispositivo.usuario_id = current_user.id
+    db.commit()
+    db.refresh(dispositivo)
+
+    return {
+        "ok": True,
+        "mensaje": f"Dispositivo '{dispositivo.nombre}' asignado a {current_user.username}",
+        "dispositivo_id": dispositivo.id,
+    }
 
 
 

@@ -42,16 +42,17 @@ python scripts/simulador_realista.py --interval 3 # Simulator
 - **LSTM buffer must fill first**: needs 10 sequential samples before returning predictions; returns `"Calibrando LSTM..."` until then.
 - **Python version**: project requires Python ≤ 3.11 for TensorFlow 2.15. Railway **ignores** `.python-version` — add a `runtime.txt` with `python-3.11` or the build fails.
 - **IA_MODE**: `.env` expects `IA_MODE=deep` (Bi-LSTM). No other modes exist.
-- **Model format mismatch**: `scripts/train_local.py` saves as `.keras` but `app/services/ia_deep_learning.py` loads from `.h5`. Keep both or retrain after deploy.
+- **Model format**: `scripts/train_local.py` saves both `.keras` and `.h5`; `app/services/ia_deep_learning.py` loads from `.h5` (`models/lstm_anomaly_detector.h5`).
 - **Model file is mandatory in production**: `models/lstm_anomaly_detector.h5` must exist. The app crashes on startup if missing and `ENVIRONMENT != "development"`.
 - **Auto-training is dev-only**: In development, if no model file exists, the app trains from `dataset_entrenamiento.csv` or dummy data. Production never auto-trains.
-- **DB tables auto-create** on every startup (`Base.metadata.create_all`). New columns (`username`, `password_hash`) also auto-migrate with ALTER TABLE IF NOT EXISTS. No Alembic needed.
+- **DB tables auto-create** on every startup (`Base.metadata.create_all`). New columns (`username`, `password_hash`, `reset_code_hash`, `reset_code_expires_at`) auto-migrate with ALTER TABLE IF NOT EXISTS. No Alembic needed.
+- **APAGÓN debounce**: requires 2 consecutive readings V<70 (6s) before creating APAGÓN incident. Single spurious readings (e.g., ADC noise from WiFi) are ignored. V<10 bypasses debounce for immediate detection. Cada incidencia incluye historial de últimas 5 lecturas de voltaje para diagnóstico.
 - **`.env` is gitignored but is already committed** with a real Neon PostgreSQL credential. Do not re-commit secrets.
-- **`postgres://` → `postgresql://`**: `dashboard.py` auto-fixes the prefix; `settings.py` does not.
+- **`postgres://` → `postgresql://`**: `dashboard.py` auto-fixes the prefix; `app/core/config.py` does not.
 - **CORS wide open** (`allow_origins=["*"]`) — intentional for Streamlit<->FastAPI communication.
-- **Telegram notifications**: optional, configured via `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in `.env` or Railway variables. Active service in `app/services/telegram.py`.
-- **Devcontainer `postAttachCommand` is wrong**: it runs `streamlit run app/main.py` (should be `uvicorn app.main:app`).
-- **`stream.py` is an abandoned file** — not the real dashboard (use `dashboard.py`).
+- **Telegram notifications**: optional, configured via `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in `.env` or Railway. Debounce de 300s por tipo/dispositivo vía `app/services/telegram.py`.
+- **Users have `telegram_id` field** (nullable) — needed for forgot-password and per-device Telegram alerts.
+- **Forgot-password**: código numérico de 6 dígitos con expiry 10 min, enviado al Telegram del usuario. Endpoints `POST /forgot-password`, `POST /reset-password`. Requiere `telegram_id` en el usuario.
 
 ## Dataset
 
