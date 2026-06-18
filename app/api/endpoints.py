@@ -132,10 +132,12 @@ def ingest_telemetry(
     }
     ia_resultado = detector.procesar(datos_analisis)
 
-    # 7. LSTM es el detector principal; reglas solo etiquetan el tipo
+    # 7. LSTM detecta anomalias temporales; reglas detectan anomalias de valor
     lstm_anomalia = ia_resultado.get("anomalia", False)
     if lstm_anomalia:
         tipo_final = tipo_regla or "ANOMALIA_LSTM"
+    elif tipo_regla:
+        tipo_final = tipo_regla
     else:
         tipo_final = None
 
@@ -157,6 +159,9 @@ def ingest_telemetry(
             )
 
             desc = f"V={payload.voltaje}V, I={payload.corriente}A, F={payload.frecuencia or 60.0}Hz"
+            score_final = ia_resultado.get("score", 0.0)
+            if not lstm_anomalia and tipo_regla:
+                score_final = max(score_final, 0.95)
 
             incidencia = Incidencia(
                 dispositivo_id=dispositivo.id,
@@ -165,7 +170,7 @@ def ingest_telemetry(
                 descripcion=desc,
                 severidad=severidad,
                 estado=EstadoEnum.abierta,
-                score_anomalia=ia_resultado.get("score", 1.0),
+                score_anomalia=score_final,
             )
             db.add(incidencia)
 
