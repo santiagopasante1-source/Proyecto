@@ -153,10 +153,7 @@ def ingest_telemetry(
                 else SeveridadEnum.alta
             )
 
-            desc = (
-                f"{tipo_final} detectado — V={payload.voltaje}V, I={payload.corriente}A, "
-                f"F={payload.frecuencia or 60.0}Hz"
-            )
+            desc = f"V={payload.voltaje}V, I={payload.corriente}A, F={payload.frecuencia or 60.0}Hz"
 
             incidencia = Incidencia(
                 dispositivo_id=dispositivo.id,
