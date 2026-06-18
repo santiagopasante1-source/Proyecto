@@ -148,6 +148,7 @@ def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+
 # ── Helpers de consumo energético (kWh) ─────────────────────────────────────
 
 def compute_kwh_daily(dispositivo_id: int, dias: int) -> pd.DataFrame:
@@ -207,6 +208,7 @@ def compute_kwh_hourly(dispositivo_id: int) -> pd.DataFrame:
         ORDER BY hora
     """
     return query_df(sql, params={"id": dispositivo_id})
+
 
 
 # ── Helpers cacheados (evitan llamadas repetidas en cada rerun) ───────────────

@@ -125,7 +125,6 @@ class DeviceMonitor:
                         ),
                         device.id, "APAGON", chat_id,
                     )
-
                     db.commit()
                     logger.warning("APAGON creado para dispositivo %s (V=0/I=0 insertado)", device.id)
                 else:
