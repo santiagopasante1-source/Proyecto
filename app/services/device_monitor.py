@@ -116,11 +116,11 @@ class DeviceMonitor:
 
                     telegram_service.send_notification(
                         (
-                            f"🚨 FALLA DEL SERVICIO\n\n"
+                            f"FALLA DEL SERVICIO\n\n"
                             f"Dispositivo: {device.nombre or device.id}\n"
                             f"Ubicacion: {device.ubicacion or 'No especificada'}\n"
                             f"Severidad: CRITICA\n"
-                            f"Motivo: Sin datos en los últimos {TIMEOUT_SECONDS}s\n"
+                            f"Motivo: Sin datos en los ultimos {TIMEOUT_SECONDS}s\n"
                             f"Ultimo ping: {device.ultimo_ping.isoformat()}"
                         ),
                         device.id, "APAGON", chat_id,
