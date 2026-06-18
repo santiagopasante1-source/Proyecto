@@ -23,10 +23,6 @@ router = APIRouter(prefix="/api/v1", tags=["Telemetría"])
 
 TIPOS_TELEGRAM = {"APAGON", "SOBREVOLTAJE", "BAJO_VOLTAJE", "FRECUENCIA_ANOMALA", "ANOMALIA_LSTM"}
 
-_apagon_counter: dict[int, int] = {}       # consecutive V<70 per device
-_voltage_diag: dict[int, list[float]] = {} # last N readings for diagnostic logging
-DIAG_BUFFER_SIZE = 5
-
 def _score_to_severidad(score: float) -> SeveridadEnum:
     """Traduce el score de la IA a niveles de severidad de negocio."""
     if score >= 0.90: 
@@ -39,16 +35,7 @@ def _score_to_severidad(score: float) -> SeveridadEnum:
         return SeveridadEnum.baja
 
 def _clasificar_tipo_anomalia(voltaje: float, frecuencia: float) -> str | None:
-    """Clasifica el tipo de anomalía según reglas de ingeniería.
-    
-    Orden de precedencia:
-    1. APAGON (V < 70)
-    2. SOBREVOLTAJE (V > 134)
-    3. BAJO_VOLTAJE (V < 110)
-    4. FRECUENCIA_ANOMALA (F < 59 o F > 61)
-    """
-    if voltaje < 70:
-        return "APAGON"
+    """Clasifica el tipo de anomalía según reglas de ingeniería."""
     if voltaje > 134:
         return "SOBREVOLTAJE"
     if voltaje < 114:
@@ -137,21 +124,6 @@ def ingest_telemetry(
     # 5. Clasificar anomalía por reglas (solo para etiquetar el tipo)
     tipo_regla = _clasificar_tipo_anomalia(payload.voltaje, payload.frecuencia)
 
-    # 5b. APAGÓN debounce con contador (2 lecturas consecutivas V<70 confirman)
-    _diag_buf = _voltage_diag.setdefault(dispositivo.id, [])
-    _diag_buf.append(payload.voltaje)
-    if len(_diag_buf) > DIAG_BUFFER_SIZE:
-        _diag_buf.pop(0)
-
-    if tipo_regla == "APAGON":
-        _apagon_counter[dispositivo.id] = _apagon_counter.get(dispositivo.id, 0) + 1
-        if _apagon_counter[dispositivo.id] >= 2:
-            apagon_ultimos = ", ".join(f"{v:.1f}V" for v in _diag_buf)
-        else:
-            tipo_regla = None
-    elif _apagon_counter.get(dispositivo.id, 0) > 0:
-        _apagon_counter[dispositivo.id] = 0
-
     # 6. Inferencia IA (LSTM) — siempre se ejecuta
     datos_analisis = {
         "voltaje": payload.voltaje,
@@ -181,17 +153,10 @@ def ingest_telemetry(
                 else SeveridadEnum.alta
             )
 
-            if tipo_final == "APAGON":
-                desc = (
-                    f"Corte de energía — V={payload.voltaje}V "
-                    f"(historial: {apagon_ultimos}), I={payload.corriente}A, "
-                    f"F={payload.frecuencia or 60.0}Hz"
-                )
-            else:
-                desc = (
-                    f"{tipo_final} detectado — V={payload.voltaje}V, I={payload.corriente}A, "
-                    f"F={payload.frecuencia or 60.0}Hz"
-                )
+            desc = (
+                f"{tipo_final} detectado — V={payload.voltaje}V, I={payload.corriente}A, "
+                f"F={payload.frecuencia or 60.0}Hz"
+            )
 
             incidencia = Incidencia(
                 dispositivo_id=dispositivo.id,
@@ -212,22 +177,13 @@ def ingest_telemetry(
                     dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
                     chat_id = dueño.telegram_id if dueño and dueño.telegram_id else None
 
-                if tipo_final == "APAGON":
-                    msg = (
-                        f"🚨 APAGON (CONFIRMADO)\n\n"
-                        f"Dispositivo: {dispositivo_nombre}\n"
-                        f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
-                        f"Severidad: CRITICA\n"
-                        f"Lectura: {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
-                    )
-                else:
-                    msg = (
-                        f"🚨 {tipo_final} DETECTADO\n\n"
-                        f"Dispositivo: {dispositivo_nombre}\n"
-                        f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
-                        f"Severidad: {severidad.value.upper()}\n"
-                        f"Lectura: {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
-                    )
+                msg = (
+                    f"🚨 {tipo_final} DETECTADO\n\n"
+                    f"Dispositivo: {dispositivo_nombre}\n"
+                    f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
+                    f"Severidad: {severidad.value.upper()}\n"
+                    f"Lectura: {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
+                )
                 telegram_service.send_notification(msg, dispositivo.id, tipo_final, chat_id)
 
             logger.warning("%s registrado para dispositivo %s (score LSTM=%.3f)",

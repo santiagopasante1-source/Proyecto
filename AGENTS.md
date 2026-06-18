@@ -46,8 +46,8 @@ python scripts/simulador_realista.py --interval 3 # Simulator
 - **Model file is mandatory in production**: `models/lstm_anomaly_detector.h5` must exist. The app crashes on startup if missing and `ENVIRONMENT != "development"`.
 - **Auto-training is dev-only**: In development, if no model file exists, the app trains from `dataset_entrenamiento.csv` or dummy data. Production never auto-trains.
 - **DB tables auto-create** on every startup (`Base.metadata.create_all`). New columns (`username`, `password_hash`, `reset_code_hash`, `reset_code_expires_at`) auto-migrate with ALTER TABLE IF NOT EXISTS. No Alembic needed.
-- **LSTM es el detector principal**: Toda telemetría pasa siempre por el LSTM (no hay early-exit por reglas). Reglas de ingeniería solo etiquetan el tipo de anomalía (APAGÓN, SOBREVOLTAJE, etc.). Si LSTM detecta anomalía pero ninguna regla clasifica, se crea `ANOMALIA_LSTM`. Si regla detecta pero LSTM no (calibración/safety net), igual se crea la incidencia.
-- **APAGÓN debounce**: Contador simple de 2 lecturas consecutivas V<70 antes de confirmar (evita falsos por ruido ADC/WiFi). Se resetea si V≥70. Cada incidencia incluye historial de últimas 5 lecturas.
+- **LSTM es el detector principal**: Toda telemetría pasa siempre por el LSTM (no hay early-exit por reglas). Reglas de ingeniería solo etiquetan el tipo de anomalía (SOBREVOLTAJE, BAJO_VOLTAJE, FRECUENCIA_ANOMALA). Si LSTM detecta anomalía pero ninguna regla clasifica, se crea `ANOMALIA_LSTM`. Si regla detecta pero LSTM no (calibración/safety net), igual se crea la incidencia.
+- **APAGÓN solo por DeviceMonitor**: En un apagón real el ESP32 pierde alimentación, no envía datos. APAGÓN se detecta vía `DeviceMonitor` (60s sin telemetría), no por reglas de voltaje bajo. RESTABLECIMIENTO se crea cuando vuelven los datos.
 - **`.env` is gitignored but is already committed** with a real Neon PostgreSQL credential. Do not re-commit secrets.
 - **`postgres://` → `postgresql://`**: `dashboard.py` auto-fixes the prefix; `app/core/config.py` does not.
 - **CORS wide open** (`allow_origins=["*"]`) — intentional for Streamlit<->FastAPI communication.
