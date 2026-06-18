@@ -40,10 +40,15 @@ def entrenar():
     X, Y = preparar_secuencias(x_raw, y_raw, SEQUENCE_LENGTH)
     print(f"Secuencias generadas: {len(X)} (ventana={SEQUENCE_LENGTH})")
 
+    # Shuffle antes de partir para mezclar normales/anomalias
+    indices = np.random.permutation(len(X))
+    X, Y = X[indices], Y[indices]
+
     split = int(len(X) * (1 - VALIDATION_SPLIT))
     X_train, X_val = X[:split], X[split:]
     Y_train, Y_val = Y[:split], Y[split:]
     print(f"Train: {len(X_train)}, Val: {len(X_val)}")
+    print(f"  Train anomalias: {Y_train.sum():.0f}, Val anomalias: {Y_val.sum():.0f}")
 
     print("Construyendo modelo Bi-LSTM (LSTM(64) -> LSTM(32) -> Dense(16))...")
     model = tf.keras.Sequential([
