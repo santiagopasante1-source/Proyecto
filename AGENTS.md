@@ -22,9 +22,9 @@ python scripts/simulador_realista.py --interval 3 # Simulator
 ## Commands
 
 | Action | Command |
-|---|---|
-| Train LSTM model | `python scripts/train_local.py` → writes `models/lstm_anomaly_detector.keras` (note: detector loads `.h5`, not `.keras`) |
-| Generate dataset (20k rows) | `python scripts/Fallas.py` → writes `dataset_entrenamiento.csv` |
+|---|---|---|
+| Train LSTM model | `python scripts/train_local.py` → writes `models/lstm_anomaly_detector.{h5,keras}` + `models/training_metrics.json` |
+| Generate dataset (30k rows) | `python scripts/Fallas.py` → writes `dataset_entrenamiento.csv` |
 | Create user + assign device | `python scripts/seed_usuario.py --username X --password Y --device-id N` |
 | Register device ID 1 | `python crear_dispositivo.py` (usually redundant — app auto-creates it on startup) |
 | Install deps | `pip install -r requirements.txt` |
@@ -46,7 +46,7 @@ python scripts/simulador_realista.py --interval 3 # Simulator
 - **Model file is mandatory in production**: `models/lstm_anomaly_detector.h5` must exist. The app crashes on startup if missing and `ENVIRONMENT != "development"`.
 - **Auto-training is dev-only**: In development, if no model file exists, the app trains from `dataset_entrenamiento.csv` or dummy data. Production never auto-trains.
 - **DB tables auto-create** on every startup (`Base.metadata.create_all`). New columns (`username`, `password_hash`, `reset_code_hash`, `reset_code_expires_at`) auto-migrate with ALTER TABLE IF NOT EXISTS. No Alembic needed.
-- **LSTM es el detector principal**: Toda telemetría pasa siempre por el LSTM (no hay early-exit por reglas). Reglas de ingeniería solo etiquetan el tipo de anomalía (SOBREVOLTAJE, BAJO_VOLTAJE, FRECUENCIA_ANOMALA). Si LSTM detecta anomalía pero ninguna regla clasifica, se crea `ANOMALIA_LSTM`. Si regla detecta pero LSTM no (calibración/safety net), igual se crea la incidencia.
+- **LSTM es el detector puro**: El LSTM decide SI hay anomalía. Reglas solo etiquetan el tipo. Si LSTM no detecta, NO se crea incidencia (sin safety net). Única excepción: RESTABLECIMIENTO vía DeviceMonitor. `ANOMALIA_LSTM` se crea cuando LSTM detecta pero ninguna regla clasifica.
 - **APAGÓN solo por DeviceMonitor**: En un apagón real el ESP32 pierde alimentación, no envía datos. APAGÓN se detecta vía `DeviceMonitor` (60s sin telemetría), no por reglas de voltaje bajo. RESTABLECIMIENTO se crea cuando vuelven los datos.
 - **`.env` is gitignored but is already committed** with a real Neon PostgreSQL credential. Do not re-commit secrets.
 - **`postgres://` → `postgresql://`**: `dashboard.py` auto-fixes the prefix; `app/core/config.py` does not.
@@ -60,7 +60,13 @@ python scripts/simulador_realista.py --interval 3 # Simulator
 
 ## Dataset
 
-`dataset_entrenamiento.csv` (20,000 rows) has columns: `voltaje, corriente, frecuencia, anomalia`. Generated in 100-row blocks alternating normal / fault states. Fault types: sobrevoltaje, bajo_voltaje, frecuencia_baja, frecuencia_alta, apagon.
+`dataset_entrenamiento.csv` (30,000 rows) has columns: `voltaje, corriente, frecuencia, anomalia`. Generated with:
+- Irregular block sizes (8-30 normal, 5-20 anomaly) — no fixed alternating pattern
+- Gradual transitions (linear ramps of 4-8 samples between states)
+- Pre-fault patterns: drift, oscillation buildup, mixed subtle signals
+- Borderline anomalies (V=114-116, F=58.8-59.3) that rules don't catch
+- 1% ADC-like noise spikes
+- Fault types: sobrevoltaje, bajo_voltaje, frecuencia_baja, frecuencia_alta, pre_drift_bajo, pre_drift_frec, pre_oscilacion, pre_mixto
 
 ## Railway Deployment (FastAPI + Deep Learning)
 

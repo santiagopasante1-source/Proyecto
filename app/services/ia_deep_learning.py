@@ -15,6 +15,7 @@ Entrenamiento:
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 import os
@@ -133,7 +134,19 @@ class DeepAnomalyDetector:
                 metrics=["accuracy", tf.keras.metrics.AUC(name="auc")],
             )
             self._is_ready = True
-            logger.info("✅ Modelo LSTM cargado y compilado con éxito desde %s", MODEL_SAVE_PATH)
+            logger.info("Modelo LSTM cargado y compilado con exito desde %s", MODEL_SAVE_PATH)
+
+            metrics_path = "models/training_metrics.json"
+            if os.path.exists(metrics_path):
+                try:
+                    with open(metrics_path, encoding="utf-8") as f:
+                        metrics = json.load(f)
+                    saved_threshold = metrics.get("threshold")
+                    if saved_threshold is not None:
+                        self.threshold = float(saved_threshold)
+                        logger.info("Threshold cargado desde training_metrics.json: %.2f", self.threshold)
+                except Exception as exc:
+                    logger.warning("No se pudo leer %s: %s — usando threshold default %.2f", metrics_path, exc, self.threshold)
             
         except Exception as exc:
             logger.error("Error cargando el archivo del modelo guardado: %s", exc)

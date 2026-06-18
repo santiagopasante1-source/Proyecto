@@ -134,7 +134,10 @@ def ingest_telemetry(
 
     # 7. LSTM es el detector principal; reglas solo etiquetan el tipo
     lstm_anomalia = ia_resultado.get("anomalia", False)
-    tipo_final = tipo_regla if tipo_regla else ("ANOMALIA_LSTM" if lstm_anomalia else None)
+    if lstm_anomalia:
+        tipo_final = tipo_regla or "ANOMALIA_LSTM"
+    else:
+        tipo_final = None
 
     if tipo_final:
         telemetria.anomalia_detectada = True
