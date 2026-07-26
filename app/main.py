@@ -24,6 +24,7 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, check_db_connection, engine, get_db
 from app.api.endpoints import router as telemetry_router
 from app.api.auth import router as auth_router
+from app.api.contactos import router as contactos_router
 from app.services.ia_manager import IAManager
 from app.services.device_monitor import DeviceMonitor
 
@@ -50,7 +51,7 @@ async def lifespan(app: FastAPI):
     """Inicialización y limpieza del ciclo de vida de la aplicación."""
 
     # 1. Inicialización de Base de Datos según el entorno
-    print("[DB] Inicializando tablas de la base de datos...")
+    print("🗄️  Inicializando tablas de la base de datos...")
     Base.metadata.create_all(bind=engine)
     
     # Migración automática: agrega columnas nuevas a la tabla usuarios si no existen
@@ -61,19 +62,19 @@ async def lifespan(app: FastAPI):
         columns = [c["name"] for c in inspector.get_columns("usuarios")]
         if "username" not in columns:
             db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN username VARCHAR(80) UNIQUE"))
-            print("[OK] Columna 'username' agregada a usuarios.")
+            print("✅ Columna 'username' agregada a usuarios.")
         if "password_hash" not in columns:
             db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN password_hash VARCHAR(255)"))
-            print("[OK] Columna 'password_hash' agregada a usuarios.")
+            print("✅ Columna 'password_hash' agregada a usuarios.")
         if "reset_code_hash" not in columns:
             db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN reset_code_hash VARCHAR(255)"))
-            print("[OK] Columna 'reset_code_hash' agregada a usuarios.")
+            print("✅ Columna 'reset_code_hash' agregada a usuarios.")
         if "reset_code_expires_at" not in columns:
             db.execute(sql_text("ALTER TABLE usuarios ADD COLUMN reset_code_expires_at TIMESTAMP WITH TIME ZONE"))
-            print("[OK] Columna 'reset_code_expires_at' agregada a usuarios.")
+            print("✅ Columna 'reset_code_expires_at' agregada a usuarios.")
         db.commit()
     except Exception as e:
-        print(f"[WARN] Migracion automatica (opcional): {e}")
+        print(f"⚠️  Migración automática (opcional): {e}")
         db.rollback()
     finally:
         db.close()
@@ -85,19 +86,19 @@ async def lifespan(app: FastAPI):
         if not db.query(Dispositivo).filter(Dispositivo.id == 1).first():
             db.add(Dispositivo(id=1, nombre="Sensor_Principal", is_active=True))
             db.commit()
-            print("[OK] Dispositivo por defecto (ID 1) creado.")
+            print("✅ Dispositivo por defecto (ID 1) creado.")
     except Exception as e:
-        print(f"[ERROR] Error al crear dispositivo por defecto: {e}")
+        print(f"❌ Error al crear dispositivo por defecto: {e}")
     finally:
         db.close()
 
     # 2. Inicializar motor de IA (Carga del modelo Bidirectional-LSTM)
-    print(f"[IA] Cargando motor de IA en modo: {settings.IA_MODE}...")
+    print(f"🤖 Cargando motor de IA en modo: {settings.IA_MODE}...")
     app.state.detector = IAManager(mode=settings.IA_MODE)
-    print(f"[OK] Motor de IA listo: {app.state.detector.status}")
+    print(f"✅ Motor de IA listo: {app.state.detector.status}")
 
     # 3. Inicializar monitor de desconexión de dispositivos
-    print("[MON] Iniciando monitor de dispositivos...")
+    print("📡 Iniciando monitor de dispositivos...")
     app.state.device_monitor = DeviceMonitor()
     app.state.device_monitor.start()
 
@@ -106,7 +107,7 @@ async def lifespan(app: FastAPI):
     # 4. Limpieza al apagar el servidor
     app.state.device_monitor.stop()
     app.state.detector = None
-    print("[OK] Servidor detenido correctamente.")
+    print("🛑 Servidor detenido correctamente.")
 
 
 # ── Configuración de la Aplicación ────────────────────────────────────────────
@@ -130,6 +131,7 @@ app.add_middleware(
 
 app.include_router(telemetry_router)
 app.include_router(auth_router)
+app.include_router(contactos_router)
 
 
 # ── Dependencias ──────────────────────────────────────────────────────────────

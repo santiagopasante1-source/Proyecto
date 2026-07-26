@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # ── Detección de cortes eléctricos
     OFFLINE_TIMEOUT_SECONDS: int = 60
 
+    # ── Gmail SMTP (Notificaciones por email)
+    GMAIL_USER: str = ""
+    GMAIL_APP_PASSWORD: str = ""
+
     # ── Configuración Pydantic-Settings 
     model_config = SettingsConfigDict(
         env_file=".env",

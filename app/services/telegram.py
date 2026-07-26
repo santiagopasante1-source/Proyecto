@@ -1,5 +1,7 @@
 import logging
+import smtplib
 import time
+from email.mime.text import MIMEText
 
 import requests
 
@@ -88,6 +90,41 @@ class TelegramService:
         if key in self._debounce:
             del self._debounce[key]
             logger.debug("Debounce limpiado para (%s, %s)", dispositivo_id, tipo)
+
+    # ── Email via Gmail SMTP ─────────────────────────────────────────────
+
+    @property
+    def _email_enabled(self) -> bool:
+        return bool(settings.GMAIL_USER and settings.GMAIL_APP_PASSWORD)
+
+    def send_email(self, to_email: str, subject: str, body: str) -> bool:
+        if not self._email_enabled:
+            logger.warning("Gmail no configurado — GMAIL_USER o GMAIL_APP_PASSWORD vacíos")
+            return False
+
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = settings.GMAIL_USER
+        msg["To"] = to_email
+
+        try:
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
+                server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
+                server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+            logger.info("Email enviado a %s", to_email)
+            return True
+        except Exception as e:
+            logger.error("Error enviando email a %s: %s", to_email, e)
+            return False
+
+    def notify_contacts(self, mensaje: str, dispositivo_id: int, tipo: str, contacts: list) -> None:
+        """Envía notificación a una lista de contactos (Telegram y/o Email)."""
+        for c in contacts:
+            if c.telegram_id:
+                self.send_notification(mensaje, dispositivo_id, tipo, c.telegram_id)
+            if c.email and self._email_enabled:
+                subject = f"[IoT Alerta] {tipo}"
+                self.send_email(c.email, subject, mensaje)
 
 
 telegram_service = TelegramService()

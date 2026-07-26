@@ -9,6 +9,7 @@ from app.models.dispositivo import Dispositivo
 from app.models.incidencia import Incidencia, SeveridadEnum, EstadoEnum
 from app.models.telemetria import Telemetria
 from app.models.usuario import Usuario
+from app.models.contacto_notificacion import ContactoNotificacion
 
 logger = logging.getLogger(__name__)
 
@@ -114,17 +115,26 @@ class DeviceMonitor:
                         dueño = db.query(Usuario).filter(Usuario.id == device.usuario_id).first()
                         chat_id = dueño.telegram_id if dueño and dueño.telegram_id else None
 
-                    telegram_service.send_notification(
-                        (
-                            f"FALLA DEL SERVICIO\n\n"
-                            f"Dispositivo: {device.nombre or device.id}\n"
-                            f"Ubicacion: {device.ubicacion or 'No especificada'}\n"
-                            f"Severidad: CRITICA\n"
-                            f"Motivo: Sin datos en los ultimos {TIMEOUT_SECONDS}s\n"
-                            f"Ultimo ping: {device.ultimo_ping.isoformat()}"
-                        ),
-                        device.id, "APAGON", chat_id,
+                    ping_fmt = device.ultimo_ping.strftime("%d/%m/%Y %H:%M:%S")
+                    msg_apagon = (
+                        f"🚨 FALLA DEL SERVICIO\n\n"
+                        f"Dispositivo: {device.nombre or device.id}\n"
+                        f"Ubicacion: {device.ubicacion or 'No especificada'}\n"
+                        f"Severidad: CRITICA\n"
+                        f"Motivo: Desconexion\n"
+                        f"Ultimo ping: {ping_fmt}"
                     )
+                    telegram_service.send_notification(
+                        msg_apagon, device.id, "APAGON", chat_id,
+                    )
+
+                    contactos = (
+                        db.query(ContactoNotificacion)
+                        .filter(ContactoNotificacion.dispositivo_id == device.id, ContactoNotificacion.is_active == True)
+                        .all()
+                    )
+                    if contactos:
+                        telegram_service.notify_contacts(msg_apagon, device.id, "APAGON", contactos)
                     db.commit()
                     logger.warning("APAGON creado para dispositivo %s (V=0/I=0 insertado)", device.id)
                 else:

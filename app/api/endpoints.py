@@ -16,6 +16,7 @@ from app.models.dispositivo import Dispositivo
 from app.models.incidencia import Incidencia, SeveridadEnum, EstadoEnum
 from app.models.telemetria import Telemetria
 from app.models.usuario import Usuario
+from app.models.contacto_notificacion import ContactoNotificacion
 from app.schemas.telemetria import TelemetriaCreate, TelemetriaIAResult, TelemetriaResponse
 
 logger = logging.getLogger(__name__)
@@ -132,12 +133,10 @@ def ingest_telemetry(
     }
     ia_resultado = detector.procesar(datos_analisis)
 
-    # 7. LSTM detecta anomalias temporales; reglas detectan anomalias de valor
+    # 7. LSTM es el detector principal; reglas solo etiquetan el tipo
     lstm_anomalia = ia_resultado.get("anomalia", False)
     if lstm_anomalia:
         tipo_final = tipo_regla or "ANOMALIA_LSTM"
-    elif tipo_regla:
-        tipo_final = tipo_regla
     else:
         tipo_final = None
 
@@ -159,9 +158,6 @@ def ingest_telemetry(
             )
 
             desc = f"V={payload.voltaje}V, I={payload.corriente}A, F={payload.frecuencia or 60.0}Hz"
-            score_final = ia_resultado.get("score", 0.0)
-            if not lstm_anomalia and tipo_regla:
-                score_final = max(score_final, 0.95)
 
             incidencia = Incidencia(
                 dispositivo_id=dispositivo.id,
@@ -170,7 +166,7 @@ def ingest_telemetry(
                 descripcion=desc,
                 severidad=severidad,
                 estado=EstadoEnum.abierta,
-                score_anomalia=score_final,
+                score_anomalia=ia_resultado.get("score", 1.0),
             )
             db.add(incidencia)
 
@@ -190,6 +186,14 @@ def ingest_telemetry(
                     f"Lectura: {telemetria.voltaje}V | {telemetria.corriente}A | {telemetria.frecuencia}Hz"
                 )
                 telegram_service.send_notification(msg, dispositivo.id, tipo_final, chat_id)
+
+                contactos = (
+                    db.query(ContactoNotificacion)
+                    .filter(ContactoNotificacion.dispositivo_id == dispositivo.id, ContactoNotificacion.is_active == True)
+                    .all()
+                )
+                if contactos:
+                    telegram_service.notify_contacts(msg, dispositivo.id, tipo_final, contactos)
 
             logger.warning("%s registrado para dispositivo %s (score LSTM=%.3f)",
                            tipo_final, dispositivo.id, ia_resultado.get("score", 0.0))
@@ -230,15 +234,23 @@ def ingest_telemetry(
             if dispositivo.usuario_id:
                 dueño = db.query(Usuario).filter(Usuario.id == dispositivo.usuario_id).first()
                 chat_id_rest = dueño.telegram_id if dueño and dueño.telegram_id else None
-            telegram_service.send_notification(
-                (
-                    f"Servicio Restablecido\n\n"
-                    f"Dispositivo: {dispositivo.nombre or dispositivo.id}\n"
-                    f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
-                    f"Voltaje: {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
-                ),
-                dispositivo.id, "RESTABLECIMIENTO", chat_id_rest,
+            msg_rest = (
+                f"Servicio Restablecido\n\n"
+                f"Dispositivo: {dispositivo.nombre or dispositivo.id}\n"
+                f"Ubicacion: {dispositivo.ubicacion or 'No especificada'}\n"
+                f"Voltaje: {payload.voltaje}V | {payload.corriente}A | {payload.frecuencia}Hz"
             )
+            telegram_service.send_notification(
+                msg_rest, dispositivo.id, "RESTABLECIMIENTO", chat_id_rest,
+            )
+
+            contactos_rest = (
+                db.query(ContactoNotificacion)
+                .filter(ContactoNotificacion.dispositivo_id == dispositivo.id, ContactoNotificacion.is_active == True)
+                .all()
+            )
+            if contactos_rest:
+                telegram_service.notify_contacts(msg_rest, dispositivo.id, "RESTABLECIMIENTO", contactos_rest)
 
             logger.info("RESTABLECIMIENTO registrado para dispositivo %s", dispositivo.id)
 

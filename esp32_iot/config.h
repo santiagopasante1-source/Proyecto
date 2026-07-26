@@ -6,7 +6,7 @@ const char* WIFI_SSID      = "TP-Link_24C4";
 const char* WIFI_PASSWORD  = "tu_contraseña_wifi";
 
 // ─── API ───────────────────────────────────────────────────
-const char* API_BASE_URL   = "https://deep-learning-production.up.railway.app";
+const char* API_BASE_URL   = "https://proyectosantiagotg-production.up.railway.app";
 const int   DEVICE_ID      = 1;
 
 // ─── Pines ADC ─────────────────────────────────────────────

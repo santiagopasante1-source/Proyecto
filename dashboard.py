@@ -119,6 +119,18 @@ def api_patch(endpoint: str, payload: dict, timeout: int = 5) -> dict | None:
         return None
 
 
+def api_delete(endpoint: str, timeout: int = 5) -> dict | None:
+    """DELETE con token — para eliminar contactos."""
+    token = st.session_state.get("token")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        r = requests.delete(f"{API_BASE}{endpoint}", headers=headers, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return None
+
+
 # ── Helpers de acceso a datos ─────────────────────────────────────────────────
 
 @st.cache_resource
@@ -1075,6 +1087,84 @@ elif pagina == "Sistema":
                     st.error(f"❌ {r.json().get('detail', 'Error desconocido')}")
             except Exception:
                 st.error("❌ Backend sin conexión")
+
+    st.divider()
+
+    # ── Contactos de notificación por dispositivo ──────────────────────────
+    st.markdown('<div class="section-header">Contactos de Notificación</div>', unsafe_allow_html=True)
+    st.caption("Agrega contactos (hasta 3 por dispositivo) que recibirán alertas por Telegram o Email.")
+
+    df_mis_dispositivos = get_user_devices(uid)
+    if not df_mis_dispositivos.empty:
+        ROL_OPCIONES = ["tecnico", "emergencia", "distribuidor", "conocidos", "familiar", "proveedor"]
+        ROL_LABELS = {
+            "tecnico": "Técnico", "emergencia": "Emergencia", "distribuidor": "Distribuidor",
+            "conocidos": "Conocidos", "familiar": "Familiar", "proveedor": "Proveedor",
+        }
+
+        selected_device_label = st.selectbox(
+            "Selecciona un dispositivo para gestionar contactos",
+            [f"{r['nombre']} (ID {r['id']})" for _, r in df_mis_dispositivos.iterrows()],
+            key="contacto_device_select",
+        )
+        selected_device_id = int(selected_device_label.split("ID ")[-1].rstrip(")"))
+
+        contactos = api_get(f"/api/v1/contactos/{selected_device_id}") or []
+        if contactos:
+            st.markdown(f"**{len(contactos)}/3** contactos registrados:")
+            for c in contactos:
+                canal = []
+                if c.get("telegram_id"):
+                    canal.append(f"TG: {c['telegram_id']}")
+                if c.get("email"):
+                    canal.append(f"Email: {c['email']}")
+                col1, col2 = st.columns([5, 1])
+                col1.markdown(
+                    f"{'🟢' if c.get('is_active') else '🔴'} "
+                    f"**{c['nombre']}** — {ROL_LABELS.get(c.get('rol', ''), c.get('rol', ''))} — {', '.join(canal)}"
+                )
+                if col2.button("🗑️", key=f"del_contacto_{c['id']}"):
+                    res = api_delete(f"/api/v1/contactos/{c['id']}")
+                    if res:
+                        st.success("Contacto eliminado")
+                        st.rerun()
+                    else:
+                        st.error("Error al eliminar")
+        else:
+            st.info("No hay contactos registrados para este dispositivo.")
+
+        if len(contactos) < 3:
+            with st.expander("➕ Agregar nuevo contacto"):
+                with st.form("form_nuevo_contacto"):
+                    cn_nombre = st.text_input("Nombre del contacto", placeholder="Ej: Juan Pérez")
+                    cn_tg = st.text_input("Telegram ID (opcional)", placeholder="Ej: 1885567115")
+                    cn_email = st.text_input("Email (opcional)", placeholder="Ej: juan@ejemplo.com")
+                    cn_rol = st.selectbox("Rol", ROL_OPCIONES, format_func=lambda x: ROL_LABELS[x])
+                    submitted = st.form_submit_button("Guardar contacto", type="primary")
+                    if submitted:
+                        if not cn_nombre.strip():
+                            st.error("El nombre es obligatorio")
+                        elif not cn_tg.strip() and not cn_email.strip():
+                            st.error("Debes proporcionar al menos un Telegram ID o un Email")
+                        else:
+                            payload = {
+                                "dispositivo_id": selected_device_id,
+                                "nombre": cn_nombre.strip(),
+                                "rol": cn_rol,
+                            }
+                            if cn_tg.strip():
+                                payload["telegram_id"] = cn_tg.strip()
+                            if cn_email.strip():
+                                payload["email"] = cn_email.strip()
+                            res = api_post("/api/v1/contactos", payload)
+                            if res and not res.get("error"):
+                                st.success("Contacto agregado")
+                                st.rerun()
+                            else:
+                                detail = res.get("detail", res.get("error", "Error desconocido")) if res else "Backend sin conexión"
+                                st.error(f"Error: {detail}")
+    else:
+        st.info("Asigna un dispositivo primero para poder agregar contactos de notificación.")
 
     st.divider()
     st.markdown('<div class="section-header">Dispositivos</div>', unsafe_allow_html=True)

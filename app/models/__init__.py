@@ -10,6 +10,7 @@ from .usuario import Usuario
 from .dispositivo import Dispositivo
 from .telemetria import Telemetria
 from .incidencia import Incidencia
+from .contacto_notificacion import ContactoNotificacion
 
 # Declaramos qué clases exporta este módulo para mantener limpio el namespace
-__all__ = ["Usuario", "Dispositivo", "Telemetria", "Incidencia"]
+__all__ = ["Usuario", "Dispositivo", "Telemetria", "Incidencia", "ContactoNotificacion"]
