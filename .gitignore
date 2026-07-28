@@ -228,5 +228,8 @@ iot_thesis.db-wal
 # Remote URL
 url.txt
 
+# Error file with secrets
+error.txt
+
 # Nested Desktop copy
 Desktop/

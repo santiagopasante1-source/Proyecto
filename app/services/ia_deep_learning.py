@@ -22,7 +22,6 @@ import os
 from collections import deque
 from typing import Any
 
-import joblib
 import numpy as np
 
 from app.core.config import settings
@@ -40,7 +39,6 @@ except ImportError:
 
 MODEL_SAVE_PATH = "models/lstm_anomaly_detector.h5"
 CSV_ENTRENAMIENTO_DEFAULT = "dataset_entrenamiento.csv"
-SCALER_PATH = "models/scaler.pkl"
 
 
 class DeepAnomalyDetector:
@@ -68,11 +66,8 @@ class DeepAnomalyDetector:
         self.features = len(self.FEATURES)
         self.threshold = threshold
         self.model = None
-        self.scaler = None
         self._buffer: deque[list[float]] = deque(maxlen=sequence_length)
         self._is_ready = False
-
-        self._load_scaler()
 
         if TF_AVAILABLE:
             if os.path.exists(MODEL_SAVE_PATH):
@@ -81,8 +76,8 @@ class DeepAnomalyDetector:
                 # CANDADO: Si no existe el modelo físico en producción, detenemos el sistema
                 if settings.ENVIRONMENT != "development":
                     raise RuntimeError(
-                        f"ERROR CRITICO: El archivo del modelo no existe en la ruta '{MODEL_SAVE_PATH}'. "
-                        f"Asegurate de haber subido tu nuevo archivo Keras a GitHub."
+                        f"❌ ERROR CRÍTICO: El archivo del modelo no existe en la ruta '{MODEL_SAVE_PATH}'. "
+                        f"Asegúrate de haber subido tu nuevo archivo Keras a GitHub."
                     )
                 
                 # Comportamiento local si estás desarrollando
@@ -159,7 +154,7 @@ class DeepAnomalyDetector:
             # Si la lectura falla en producción, rompemos el flujo inmediatamente
             if settings.ENVIRONMENT != "development":
                 raise RuntimeError(
-                    f"ERROR CRITICO: No se pudo cargar el modelo Bidirectional-LSTM en produccion: {exc}. "
+                    f"❌ ERROR CRÍTICO: No se pudo cargar el modelo Bidirectional-LSTM en producción: {exc}. "
                     f"Verifica la integridad del archivo y las dependencias."
                 ) from exc
             
@@ -169,18 +164,6 @@ class DeepAnomalyDetector:
             if os.path.exists(CSV_ENTRENAMIENTO_DEFAULT):
                 logger.info("Intentando regenerar modelo usando '%s'...", CSV_ENTRENAMIENTO_DEFAULT)
                 self.entrenar_con_csv(CSV_ENTRENAMIENTO_DEFAULT)
-
-    def _load_scaler(self) -> None:
-        if os.path.exists(SCALER_PATH):
-            try:
-                self.scaler = joblib.load(SCALER_PATH)
-                logger.info("Scaler cargado desde %s", SCALER_PATH)
-            except Exception as exc:
-                logger.warning("No se pudo cargar scaler de %s: %s", SCALER_PATH, exc)
-                self.scaler = None
-        else:
-            logger.info("No se encontro scaler en %s — inferencia sin escalar", SCALER_PATH)
-            self.scaler = None
 
     # ── Entrenamiento 
 
@@ -259,11 +242,6 @@ class DeepAnomalyDetector:
             input_data = np.array(list(self._buffer), dtype=np.float32).reshape(
                 1, self.sequence_length, self.features
             )
-            if self.scaler is not None:
-                orig_shape = input_data.shape
-                flat = input_data.reshape(-1, self.features)
-                scaled = self.scaler.transform(flat)
-                input_data = scaled.reshape(orig_shape)
             score = float(self.model.predict(input_data, verbose=0)[0][0])
             logger.info(f"DEBUG: Input Vector: {input_data.flatten().tolist()} | Score Calculado: {score}")
             if math.isnan(score) or math.isinf(score):
