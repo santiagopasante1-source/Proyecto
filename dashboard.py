@@ -1146,6 +1146,10 @@ elif pagina == "Sistema":
                             st.error("El nombre es obligatorio")
                         elif not cn_tg.strip() and not cn_email.strip():
                             st.error("Debes proporcionar al menos un Telegram ID o un Email")
+                        elif cn_tg.strip() and not cn_tg.strip().isdigit():
+                            st.error("El Telegram ID debe ser numérico (ej: 1885567115)")
+                        elif cn_email.strip() and "@" not in cn_email.strip():
+                            st.error("El email debe tener un formato válido (ej: usuario@dominio.com)")
                         else:
                             payload = {
                                 "dispositivo_id": selected_device_id,
