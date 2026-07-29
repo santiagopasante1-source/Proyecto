@@ -18,5 +18,4 @@ user --> UC3
 user --> UC4
 esp32 --> UC5
 UC5 ..> UC2 : <<include>>
-UC4 ..> tg : <<include>>
 @enduml
