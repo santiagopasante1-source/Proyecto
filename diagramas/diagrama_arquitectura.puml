@@ -1,105 +1,43 @@
 @startuml
-skinparam backgroundColor #FEFEFE
-skinparam component {
+skinparam package {
   BackgroundColor #E8F0FE
   BorderColor #386FA4
-  FontColor #1A1A1A
-}
-skinparam database {
-  BackgroundColor #D4EDDA
-  BorderColor #28A745
-}
-skinparam queue {
-  BackgroundColor #FFF3CD
-  BorderColor #FFC107
 }
 
-title "Arquitectura del Sistema - IoT Electrical Anomaly Detection"
-
-package "Capa Fisica" as fisica {
-  [ESP32\n(ZMPT101B + SCT-013)] as esp32
-  note right of esp32
-    Envia JSON cada 6s:
-    voltaje, corriente, frecuencia
-    POST /api/v1/telemetry
-  end note
+package "Fisica" {
+  [ESP32]
 }
 
-package "Capa Backend\n(FastAPI :8000)" as backend {
-  [Auth Router\n/api/v1/auth/*] as auth
-  [Telemetry Router\n/api/v1/telemetry] as telemetry
-  [Contacts Router\n/api/v1/contactos/*] as contacts
-
-  [IAManager\n(Singleton)] as ia
-  [DeviceMonitor\n(Background Thread)] as monitor
-  note right of monitor
-    Check cada 10s
-    Timeout: 60s sin datos
-    -> Crea APAGON
-  end note
-
-  [TelegramService\n(Debounce 300s)] as tg
-  [PDF Reports] as pdf
+package "Backend" {
+  [Auth]
+  [Telemetry]
+  [IAManager]
+  [DeviceMonitor]
+  [TelegramService]
 }
 
-package "Capa de Datos" as datos {
-  database "PostgreSQL\n(Neon)" as db {
-    "usuarios"
-    "dispositivos"
-    "telemetrias"
-    "incidencias"
-    "contactos_notificacion"
-  }
-
-  file "Bi-LSTM Model\n(models/lstm_anomaly_detector.h5)" as lstm
-  file "Training Metrics\n(models/training_metrics.json)" as metrics
+package "Datos" {
+  database "PostgreSQL" as db
+  file "Modelo\nBi-LSTM" as lstm
 }
 
-package "Capa de Presentacion" as ui {
-  [Streamlit Dashboard\n(:8501)] as dashboard
-  note right of dashboard
-    5 paginas:
-    - Tiempo Real
-    - Historico
-    - Consumo
-    - Incidencias
-    - Sistema
-  end note
-
-  [Web Setup\n(/setup)] as setup
+package "Presentacion" {
+  [Dashboard]
 }
 
-package "Servicios Externos" as externos {
-  [Telegram Bot API] as tgapi
-  [Gmail SMTP] as gmail
+package "Externo" {
+  [Telegram Bot]
 }
 
-' Conexiones
-esp32 --> telemetry : "HTTP POST\nJSON telemetria"
-
-telemetry --> ia : "procesar()"
-telemetry --> db : "INSERT telemetria"
-ia --> lstm : "carga modelo\ninferencia"
-ia --> metrics : "threshold=0.41"
-ia --> db : "guarda resultado"
-telemetry --> tg : "notificar si anomalia"
-monitor --> db : "check ultimo_ping"
-monitor --> db : "INSERT V=0/I=0"
-monitor --> tg : "notificar APAGON"
-auth --> db : "CRUD usuarios"
-contacts --> db : "CRUD contactos"
-contacts --> gmail : "enviar correo"
-
-dashboard --> db : "lectura directa\n(pandas + SQL)"
-dashboard --> telemetry : "analisis en vivo"
-dashboard --> pdf : "generar reportes"
-dashboard --> auth : "login JWT"
-
-setup --> auth : "asignar dispositivo"
-setup --> tg : "vincular Telegram"
-
-tg --> tgapi : "HTTP POST\nsendMessage"
-tgapi --> ui : "alertas push"
-gmail --> externos : "correos"
-
+ESP32 --> Telemetry
+Telemetry --> IAManager
+IAManager --> lstm
+Telemetry --> db
+Telemetry --> TelegramService
+DeviceMonitor --> db
+DeviceMonitor --> TelegramService
+Auth --> db
+Dashboard --> db
+Dashboard --> Telemetry
+TelegramService --> Telegram Bot
 @enduml

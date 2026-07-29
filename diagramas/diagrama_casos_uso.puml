@@ -1,67 +1,22 @@
 @startuml
 left to right direction
 actor "Usuario" as user
-actor "ESP32\n(Dispositivo IoT)" as esp32
-actor "Contacto\nNotificacion" as contacto
-actor "Telegram Bot" as tg
-actor "Administrador" as admin
+actor "ESP32" as esp32
+actor "Telegram" as tg
 
-rectangle "Sistema de Deteccion de\nAnomalias Electricas IoT" as system {
-
-  usecase "Registrarse" as UC1
-  usecase "Iniciar Sesion" as UC2
-  usecase "Ver perfil" as UC3
-  usecase "Actualizar perfil" as UC4
-  usecase "Recuperar contrasena\nvia Telegram" as UC5
-  usecase "Vincular Telegram" as UC6
-  usecase "Probar Telegram" as UC7
-
-  usecase "Asignar dispositivo" as UC8
-  usecase "Gestionar contactos\nde notificacion" as UC9
-
-  usecase "Ver dashboard\ntiempo real" as UC10
-  usecase "Ver historico" as UC11
-  usecase "Ver consumo\nelectrico" as UC12
-  usecase "Ver incidencias" as UC13
-  usecase "Descargar reporte PDF" as UC14
-
-  usecase "Enviar telemetria\n(V, I, F, Hz)" as UC15
-  usecase "Analizar con\nBi-LSTM" as UC16
-  usecase "Detectar apagon\n(DeviceMonitor)" as UC17
-
-  usecase "Crear incidencia" as UC18
-  usecase "Notificar alerta" as UC19
-  usecase "Enviar correo\na contactos" as UC20
+rectangle "Sistema IoT" as sys {
+  usecase "Gestionar cuenta" as UC1
+  usecase "Monitorear" as UC2
+  usecase "Gestionar\ndispositivos" as UC3
+  usecase "Configurar\nnotificaciones" as UC4
+  usecase "Enviar telemetria" as UC5
 }
 
 user --> UC1
 user --> UC2
 user --> UC3
 user --> UC4
-user --> UC5
-user --> UC6
-user --> UC7
-user --> UC8
-user --> UC9
-user --> UC10
-user --> UC11
-user --> UC12
-user --> UC13
-user --> UC14
-
-esp32 --> UC15
-
-UC15 .> UC16 : <<include>>
-UC16 .> UC18 : <<extend>>
-UC17 .> UC18 : <<extend>>
-
-UC18 .> UC19 : <<include>>
-UC19 .> UC20 : <<extend>>
-
-tg --> UC19
-contacto --> UC20
-
-admin --> UC8
-admin --> UC9
-
+esp32 --> UC5
+UC5 ..> UC2 : <<include>>
+UC4 ..> tg : <<include>>
 @enduml

@@ -1,83 +1,19 @@
 @startuml
-skinparam backgroundColor #FEFEFE
-skinparam participant {
-  BackgroundColor #E8F0FE
-  BorderColor #386FA4
-  FontColor #1A1A1A
-}
-skinparam database {
-  BackgroundColor #D4EDDA
-  BorderColor #28A745
-}
-
-title "Secuencia: Envio de Telemetria y Deteccion de Anomalia"
-
 actor "ESP32" as esp32
-participant "FastAPI\n/api/v1/telemetry" as api
-participant "IAManager\n(Singleton)" as ia
-participant "DeepAnomaly-\nDetector" as lstm
-database "PostgreSQL" as db
-participant "Telegram-\nService" as tg
+participant "API" as api
+participant "LSTM" as lstm
+database "BD" as db
+participant "Telegram" as tg
 actor "Usuario" as user
 
-== Inicio: ESP32 envia datos ==
-esp32 -> api: POST /api/v1/telemetry\n{voltaje, corriente, frecuencia,\ndispositivo_id}
-activate api
-
-api -> db: INSERT telemetria\n(procesado_ia=FALSE)
-note right: Guarda telemetria cruda
-
-api -> ia: process_data(voltaje,\ncorriente, frecuencia)
-activate ia
-
-ia -> lstm: agregar_a_buffer(v, i, f)
-activate lstm
-
-alt Buffer < 10 muestras
-  lstm --> ia: "Calibrando LSTM...\n(faltan X muestras)"
-  ia --> api: {"anomalia": false,\n"status": "calibrando"}
-else Buffer >= 10 muestras
-  lstm -> lstm: predict()\n(sigmoid score)
-  lstm --> ia: score_anomalia [0-1]
-
-  alt score >= 0.41
-    ia -> ia: Clasificar tipo de falla\n(reglas: voltaje, frecuencia)
-    ia -> db: INSERT incidencia\n(tipo, severidad, score)
-    ia -> tg: enviar_alerta(dispositivo_id,\ntipo, severidad)
-    activate tg
-
-    alt User tiene telegram_id
-      tg -> tg: check debounce 300s
-      alt No enviado recientemente
-        tg -> user:  Mensaje Telegram:\n"ALERTA: {tipo}\nDispositivo: {nombre}\nSeveridad: {severidad}"
-      else Dentro de debounce
-        tg -> tg: Ignorar (debounce activo)
-      end
-    end
-    deactivate tg
-
-    ia --> api: {"anomalia": true,\n"tipo": "SOBREVOLTAJE",\n"score": 0.89}
-  else score < 0.41
-    ia --> api: {"anomalia": false,\n"score": 0.12}
-  end
+esp32 -> api: POST telemetria (V, I, F)
+api -> db: Guarda telemetria
+api -> lstm: procesar()
+lstm --> api: score anomalia
+alt score >= 0.41
+  api -> db: Crea incidencia
+  api -> tg: Enviar alerta
+  tg -> user: Notificacion Telegram
 end
-deactivate lstm
-deactivate ia
-
-api -> db: UPDATE telemetria\nSET procesado_ia=TRUE,\nanomalia_detectada=TRUE|FALSE
-
-api --> esp32: 200 OK\n{id_telemetria, anomalia,\ntipo, score}
-deactivate api
-
-== Paralelo: DeviceMonitor ==
-loop Cada 10 segundos
-  api -> db: SELECT dispositivos\nWHERE ultimo_ping < now()-60s
-  alt Dispositivo sin datos > 60s
-    api -> db: INSERT telemetria\n(voltaje=0, corriente=0)
-    api -> db: INSERT incidencia\n(tipo=APAGON, severidad=critica)
-    api -> tg: enviar_alerta(APAGON)
-    tg -> user: "APAGON DETECTADO\nDispositivo: ..."
-  end
-end
-
+api --> esp32: 200 OK
 @enduml

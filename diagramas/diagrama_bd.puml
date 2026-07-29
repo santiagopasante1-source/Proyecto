@@ -1,94 +1,15 @@
 @startuml
-!define primary_key(x) <b>&lt;u&gt;x&lt;/u&gt;</b>
-!define foreign_key(x) <i>x</i>
-
 skinparam shadowing false
-skinparam backgroundColor #FEFEFE
-skinparam package {
-  BorderColor #386FA4
-  FontColor #386FA4
-}
 
-package "IoT Electrical Anomaly Detection" {
-  entity "usuarios" as usuarios {
-    + primary_key(id): INTEGER [PK]
-    --
-    # username: VARCHAR(80) [UNIQUE, NOT NULL, INDEX]
-    # email: VARCHAR(255) [UNIQUE, NOT NULL, INDEX]
-    # password_hash: VARCHAR(255) [NOT NULL]
-    # telegram_id: VARCHAR(100) [UNIQUE, NULL, INDEX]
-    # nombre: VARCHAR(150) [NULL]
-    # is_active: BOOLEAN [DEFAULT TRUE]
-    # reset_code_hash: VARCHAR(255) [NULL]
-    # reset_code_expires_at: DATETIME [NULL]
-    # created_at: DATETIME
-    # updated_at: DATETIME
-  }
+entity "usuarios" as u
+entity "dispositivos" as d
+entity "telemetrias" as t
+entity "incidencias" as i
+entity "contactos_notificacion" as c
 
-  entity "dispositivos" as dispositivos {
-    + primary_key(id): INTEGER [PK]
-    --
-    # usuario_id: INTEGER [FK -> usuarios.id, NULL]
-    # nombre: VARCHAR(150) [NULL]
-    # mac_address: VARCHAR(17) [UNIQUE, NULL, INDEX]
-    # descripcion: VARCHAR(500) [NULL]
-    # ubicacion: VARCHAR(255) [NULL]
-    # is_active: BOOLEAN [DEFAULT TRUE]
-    # ultimo_ping: DATETIME [NULL]
-    # created_at: DATETIME
-  }
-
-  entity "telemetrias" as telemetrias {
-    + primary_key(id): INTEGER [PK]
-    --
-    # dispositivo_id: INTEGER [FK -> dispositivos.id, NOT NULL]
-    # voltaje: FLOAT [NOT NULL]
-    # corriente: FLOAT [NOT NULL]
-    # potencia: FLOAT [NULL]
-    # frecuencia: FLOAT [NULL]
-    # timestamp: DATETIME [INDEX]
-    # procesado_ia: BOOLEAN [DEFAULT FALSE]
-    # anomalia_detectada: BOOLEAN [DEFAULT FALSE]
-    # raw_payload: VARCHAR(2000) [NULL]
-  }
-
-  entity "incidencias" as incidencias {
-    + primary_key(id): INTEGER [PK]
-    --
-    # dispositivo_id: INTEGER [FK -> dispositivos.id, NOT NULL]
-    # telemetria_id: INTEGER [FK -> telemetrias.id, NULL]
-    # tipo: VARCHAR(100) [NOT NULL]
-    # descripcion: VARCHAR(1000) [NULL]
-    # severidad: ENUM(baja,media,alta,critica) [NOT NULL]
-    # estado: ENUM(abierta,en_revision,resuelta,descartada) [NOT NULL]
-    # score_anomalia: FLOAT [NULL]
-    # created_at: DATETIME [INDEX]
-    # resolved_at: DATETIME [NULL]
-    # notas: VARCHAR(2000) [NULL]
-  }
-
-  entity "contactos_notificacion" as contactos {
-    + primary_key(id): INTEGER [PK]
-    --
-    # dispositivo_id: INTEGER [FK -> dispositivos.id, NOT NULL, INDEX]
-    # nombre: VARCHAR(150) [NOT NULL]
-    # telegram_id: VARCHAR(100) [NULL]
-    # email: VARCHAR(255) [NULL]
-    # rol: ENUM(tecnico,emergencia,distribuidor,conocidos,familiar,proveedor) [NOT NULL]
-    # is_active: BOOLEAN [DEFAULT TRUE]
-    # created_at: DATETIME
-    --
-    CHECK (telegram_id IS NOT NULL OR email IS NOT NULL)
-  }
-}
-
-usuarios ||--o{ dispositivos : "1 -> N"
-dispositivos ||--o{ telemetrias : "1 -> N"
-dispositivos ||--o{ incidencias : "1 -> N"
-dispositivos ||--o{ contactos : "1 -> N (max 3)"
-telemetrias ||--o{ incidencias : "1 -> N"
-
-note bottom of contactos : "CK: al menos un canal (telegram o email)"
-note bottom of incidencias : "Tipos: APAGON, SOBREVOLTAJE, BAJO_VOLTAJE,\nFRECUENCIA_ANOMALA, ANOMALIA_LSTM,\nDESCONEXION, RECONEXION,\nRESTABLECIMIENTO"
-note bottom of telemetrias : "3 features para LSTM:\nvoltaje, corriente, frecuencia"
+u ||--o{ d
+d ||--o{ t
+d ||--o{ i
+d ||--o{ c
+t ||--o{ i
 @enduml
