@@ -57,6 +57,8 @@ DB_URL = DATABASE_URL
 
 REFRESH_INTERVAL_S = 12                                        # Segundos entre actualizaciones en tiempo real
 MAX_REALTIME_POINTS = 60                                       # Puntos visibles en el gráfico en vivo
+OUTAGE_RISK_WINDOW_DAYS = 90                                   # Ventana histórica para la predicción de apagones
+OUTAGE_RISK_MIN_APAGONES = 5                                   # Mínimo de apagones para usar esa fuente
 SEVERIDAD_COLORS = {
     "baja":     "#3B82F6",   # azul
     "media":    "#F59E0B",   # ámbar
@@ -162,6 +164,103 @@ def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
     except Exception as exc:
         st.warning(f"Error de base de datos: {exc}")
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_outage_risk(dispositivo_id: int, dias: int = OUTAGE_RISK_WINDOW_DAYS) -> dict:
+    """Riesgo histórico de apagón por hora local (America/Caracas)."""
+    fecha_inicio = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+
+    df_ap = query_df(
+        """
+        SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'America/Caracas')::int AS hora,
+               COUNT(*) AS eventos
+        FROM incidencias
+        WHERE dispositivo_id = :dispositivo_id
+          AND tipo = 'APAGON'
+          AND created_at >= :fecha_inicio
+        GROUP BY 1
+        """,
+        params={"dispositivo_id": dispositivo_id, "fecha_inicio": fecha_inicio},
+    )
+    df_an = query_df(
+        """
+        SELECT EXTRACT(HOUR FROM timestamp AT TIME ZONE 'America/Caracas')::int AS hora,
+               COUNT(*) AS total,
+               SUM(CASE WHEN anomalia_detectada THEN 1 ELSE 0 END) AS anomalias
+        FROM telemetrias
+        WHERE dispositivo_id = :dispositivo_id
+          AND timestamp >= :fecha_inicio
+        GROUP BY 1
+        """,
+        params={"dispositivo_id": dispositivo_id, "fecha_inicio": fecha_inicio},
+    )
+
+    base = pd.DataFrame({"hora": range(24)})
+    if df_ap.empty or "hora" not in df_ap.columns:
+        ap = base.assign(eventos=0)
+    else:
+        ap = base.merge(df_ap, on="hora", how="left")
+    ap["eventos"] = pd.to_numeric(ap["eventos"], errors="coerce").fillna(0).astype(int)
+    total_apagones = int(ap["eventos"].sum())
+
+    if df_an.empty or "hora" not in df_an.columns:
+        an = base.assign(total=0, anomalias=0)
+    else:
+        an = base.merge(df_an, on="hora", how="left")
+        an["total"] = pd.to_numeric(an["total"], errors="coerce").fillna(0).astype(int)
+        an["anomalias"] = pd.to_numeric(an["anomalias"], errors="coerce").fillna(0).astype(int)
+    total_lecturas = int(an["total"].sum())
+    total_anomalias = int(an["anomalias"].sum())
+
+    if total_apagones >= OUTAGE_RISK_MIN_APAGONES:
+        df = ap.copy()
+        max_eventos = df["eventos"].max()
+        df["riesgo"] = (df["eventos"] / max_eventos * 100).round(1) if max_eventos > 0 else 0.0
+        df["fuente"] = "apagones"
+        df["hover"] = df["eventos"].apply(lambda n: f"{int(n)} apagones registrados")
+        suficiente = True
+    elif total_lecturas > 0:
+        df = an.copy()
+        df["tasa"] = (
+            (df["anomalias"] / df["total"].where(df["total"] > 0)) * 100
+        ).fillna(0).round(1)
+        max_tasa = df["tasa"].max()
+        df["riesgo"] = (df["tasa"] / max_tasa * 100).round(1) if max_tasa > 0 else 0.0
+        df["fuente"] = "anomalias"
+        df["hover"] = df.apply(
+            lambda r: f"{r['tasa']:.1f}% anomalías ({int(r['anomalias'])}/{int(r['total'])} lecturas)",
+            axis=1,
+        )
+        suficiente = total_lecturas >= 100
+    else:
+        df = ap.assign(riesgo=0.0, fuente="insuficiente", hover="Sin historial")
+        suficiente = False
+
+    if suficiente and df["riesgo"].max() <= 0:
+        suficiente = False
+
+    hora_pico = None
+    riesgo_pico = 0.0
+    top_horas: list[int] = []
+    if suficiente:
+        orden = df.sort_values("riesgo", ascending=False)
+        top_horas = [int(h) for h in orden.head(3)["hora"].tolist()]
+        hora_pico = top_horas[0]
+        riesgo_pico = float(df.loc[df["hora"] == hora_pico, "riesgo"].iloc[0])
+
+    return {
+        "df": df,
+        "fuente": str(df["fuente"].iloc[0]),
+        "suficiente": suficiente,
+        "total_apagones": total_apagones,
+        "total_anomalias": total_anomalias,
+        "total_lecturas": total_lecturas,
+        "hora_pico": hora_pico,
+        "riesgo_pico": riesgo_pico,
+        "top_horas": top_horas,
+        "dias": dias,
+    }
 
 
 
@@ -626,49 +725,106 @@ if pagina == "Tiempo Real":
     else:
         st.info("Esperando flujo de series de datos temporales...")
 
-    # ── 5. DISTRIBUCIÓN DE ANOMALÍAS (GAUGE) ──
-    st.markdown('<div class="section-header">Tasa de anomalías (últimas 100 muestras)</div>', unsafe_allow_html=True)
-    
-    sql_rate = """
-        SELECT
-            COUNT(*) as total,
-            SUM(CASE WHEN anomalia_detectada THEN 1 ELSE 0 END) as anomalias
-        FROM (
-            SELECT anomalia_detectada FROM telemetrias
-            WHERE dispositivo_id = :dispositivo_id
-            ORDER BY timestamp DESC LIMIT 100
-        ) sub_rate
-    """
-    df_rate = query_df(sql_rate, params={"dispositivo_id": dispositivo_id})
-    if not df_rate.empty and df_rate.iloc[0]["total"] > 0:
-        row = df_rate.iloc[0]
-        tasa = (row["anomalias"] / row["total"]) * 100
-        fig_gauge = go.Figure(go.Indicator(
-            mode="gauge+number+delta",
-            value=tasa,
-            number={"suffix": "%", "font": {"color": "#f1f5f9"}},
-            delta={"reference": 5, "increasing": {"color": "#ef4444"}, "decreasing": {"color": "#22c55e"}},
-            gauge={
-                "axis": {"range": [0, 100], "tickcolor": "#475569"},
-                "bar": {"color": "#6366f1"},
-                "steps": [
-                    {"range": [0, 5],   "color": "#14532d"},
-                    {"range": [5, 20],  "color": "#78350f"},
-                    {"range": [20, 100],"color": "#7f1d1d"},
-                ],
-                "threshold": {"line": {"color": "#ef4444", "width": 3}, "value": 20},
-            },
-            title={"text": "Tasa de anomalías", "font": {"color": "#94a3b8"}},
-        ))
-        fig_gauge.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", font_color="#94a3b8",
-            height=250, margin=dict(l=20, r=20, t=40, b=0),
+    # ── 5. PREDICCIÓN DE RIESGO DE APAGÓN POR HORA ──
+    st.markdown('<div class="section-header">Predicción de apagones por hora (histórico)</div>', unsafe_allow_html=True)
+
+    riesgo = get_outage_risk(dispositivo_id)
+    df_risk = riesgo["df"]
+
+    if not riesgo["suficiente"]:
+        st.info(
+            "Todavía no hay suficiente historial para estimar la hora de riesgo. "
+            f"Se necesitan al menos {OUTAGE_RISK_MIN_APAGONES} apagones o 100 lecturas."
         )
-        st.plotly_chart(fig_gauge, width='stretch')
+        st.caption(
+            f"Ventana analizada: {riesgo['dias']} días · "
+            f"Apagones: {riesgo['total_apagones']} · Lecturas: {riesgo['total_lecturas']}"
+        )
+    else:
+        pico = int(riesgo["hora_pico"])
+        fuente_txt = (
+            "apagones históricos"
+            if riesgo["fuente"] == "apagones"
+            else "tasa de anomalías (respaldo)"
+        )
+        fig_risk = go.Figure()
+        fig_risk.add_trace(go.Bar(
+            x=df_risk["hora"],
+            y=df_risk["riesgo"],
+            marker=dict(
+                color=df_risk["riesgo"],
+                colorscale=[[0, "#22c55e"], [0.5, "#f59e0b"], [1, "#ef4444"]],
+                cmin=0,
+                cmax=100,
+                line=dict(width=0),
+            ),
+            customdata=df_risk[["hover"]],
+            hovertemplate=(
+                "%{x}:00<br>%{customdata[0]}"
+                "<br>Índice de riesgo: %{y:.0f}/100<extra></extra>"
+            ),
+        ))
+        fig_risk.add_trace(go.Scatter(
+            x=df_risk["hora"],
+            y=df_risk["riesgo"].rolling(3, center=True, min_periods=1).mean(),
+            mode="lines",
+            line=dict(color="#93c5fd", width=2, dash="dot"),
+            hoverinfo="skip",
+        ))
+        fig_risk.add_trace(go.Scatter(
+            x=[pico],
+            y=[riesgo["riesgo_pico"]],
+            mode="markers+text",
+            marker=dict(color="#ef4444", size=14, symbol="star", line=dict(color="#ffffff", width=1)),
+            text=[f"Pico {pico:02d}:00"],
+            textposition="top center",
+            textfont=dict(color="#fecaca"),
+            hoverinfo="skip",
+        ))
+        fig_risk.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#94a3b8", height=320, margin=dict(l=0, r=0, t=30, b=0),
+            xaxis=dict(
+                title="Hora (Venezuela)",
+                tickmode="array",
+                tickvals=list(range(0, 24, 2)),
+                ticktext=[f"{h:02d}:00" for h in range(0, 24, 2)],
+                showgrid=False,
+            ),
+            yaxis=dict(
+                title="Índice de riesgo (0-100)",
+                range=[0, 105],
+                gridcolor="#1e293b",
+            ),
+            showlegend=False,
+            bargap=0.25,
+        )
+        st.plotly_chart(fig_risk, width='stretch')
+
+        ahora = datetime.now(ZoneInfo("America/Caracas")).hour
+        proximas = [h for h in riesgo["top_horas"] if h >= ahora]
+        if proximas:
+            prox = min(proximas)
+            cuando = "ahora" if prox == ahora else f"hoy a las {prox:02d}:00"
+        else:
+            prox = min(riesgo["top_horas"])
+            cuando = f"mañana a las {prox:02d}:00"
+        prox_riesgo = float(df_risk.loc[df_risk["hora"] == prox, "riesgo"].iloc[0])
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Hora pico histórica", f"{pico:02d}:00", f"Índice {riesgo['riesgo_pico']:.0f}/100")
+        c2.metric("Próxima ventana de riesgo", cuando, f"Índice {prox_riesgo:.0f}/100")
+        c3.metric("Base histórica", f"{riesgo['total_apagones']} apagones", f"{riesgo['dias']} días")
+
+        st.caption(
+            "Estimación estadística basada en el historial por hora. No es una garantía de corte. "
+            f"Fuente: {fuente_txt}."
+        )
 
     st.caption(f"Actualizacion automatica activa cada {REFRESH_INTERVAL_S}s")
-    time.sleep(REFRESH_INTERVAL_S)
-    st.rerun()
+    if not os.getenv("DASHBOARD_NO_AUTOREFRESH"):
+        time.sleep(REFRESH_INTERVAL_S)
+        st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PÁGINA 2: HISTÓRICO
