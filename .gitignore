@@ -236,3 +236,14 @@ Ramas.txt
 
 # Nested Desktop copy
 Desktop/
+
+# Android (proyecto APK)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+*.iml
