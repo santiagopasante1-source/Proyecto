@@ -406,6 +406,27 @@ if "forgot_mode" not in st.session_state:
 if "code_sent" not in st.session_state:
     st.session_state.code_sent = False
 
+# ── Auto-login desde la app Android (token JWT en query param) ────────────────
+try:
+    _qp_token = st.query_params.get("token")
+except Exception:
+    _qp_token = None
+
+if _qp_token and not st.session_state.token:
+    st.session_state.token = _qp_token
+    _me = api_get("/api/v1/auth/me")
+    if _me and _me.get("username"):
+        st.session_state.user = _me
+        st.session_state.login_success = True
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+        st.rerun()
+    else:
+        st.session_state.token = None
+        st.session_state.user = None
+
 # ── Login / Register page ─────────────────────────────────────────────────────
 
 if not st.session_state.token:
