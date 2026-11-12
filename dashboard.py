@@ -392,6 +392,14 @@ st.markdown("""
         font-size: 16px; font-weight: 600; color: #e2e8f0;
         border-left: 3px solid #6366f1; padding-left: 10px; margin: 20px 0 12px;
     }
+
+    /* Quita la "sombra/fantasma" al cambiar de pestaña: Streamlit atenúa
+       los elementos stale a opacity 0.33 con un fade de 1s. Lo forzamos
+       a opacidad completa y sin transición para que no quede el residuo. */
+    [data-testid="stElementContainer"][data-stale="true"] {
+        opacity: 1 !important;
+        transition: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
