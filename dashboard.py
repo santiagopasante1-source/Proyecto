@@ -33,11 +33,25 @@ from app.services.pdf_reports import gen_pdf_incidencias as _gen_pdf_incidencias
 # ── Cargar variables de entorno del archivo .env
 load_dotenv()
 
+# ── Puente de Secrets (Streamlit Cloud): copia st.secrets -> os.environ
+# Necesario para que os.getenv("DATABASE_URL"/"API_BASE") funcione en Cloud,
+# donde los secrets NO se exponen automáticamente como variables de entorno.
+try:
+    if hasattr(st, "secrets"):
+        for _key, _value in st.secrets.items():
+            if isinstance(_value, dict):
+                for _sub_key, _sub_value in _value.items():
+                    os.environ[_sub_key.upper()] = str(_sub_value)
+            else:
+                os.environ[_key.upper()] = str(_value)
+except Exception:
+    pass
+
 # ── Configuración de página 
 st.set_page_config(
     page_title="IoT Anomaly Monitor",
     page_icon="chart_with_upwards_trend",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="expanded",
 )
 
